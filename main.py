@@ -7,7 +7,7 @@ app = FastAPI()
 # CORS configuration
 origins = [
     "http://localhost:3000",  # Dev frontend
-    # "https://your-production-domain.com",  # Uncomment in production
+    "https://task-frontend-sarthak-thakares-projects.vercel.app",  # Uncomment in production
 ]
 
 app.add_middleware(
@@ -28,3 +28,7 @@ app.include_router(task_log.router, prefix="/logs", tags=["Logs"])  # ✅ Correc
 @app.get("/")
 def read_root():
     return {"message": "Task Manager API"}
+
+@app.get("/health")
+def health():
+  return {"status": "ok"}
