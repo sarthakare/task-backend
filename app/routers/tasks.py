@@ -49,13 +49,10 @@ def get_all_tasks(
     current_user: user_model.User = Depends(get_current_user)
 ):
     try:
-        if current_user.role in ["admin", "manager"]:
-            tasks = db.query(task_model.Task).all()
-        else:
-            tasks = db.query(task_model.Task).filter(
-                (task_model.Task.created_by == current_user.id) |
-                (task_model.Task.assigned_to == current_user.id)
-            ).all()
+        # ✅ Only tasks assigned to current user
+        tasks = db.query(task_model.Task).filter(
+            task_model.Task.assigned_to == current_user.id
+        ).all()
 
         pydantic_tasks = [task_schema.TaskOut.model_validate(task) for task in tasks]
 
@@ -63,19 +60,22 @@ def get_all_tasks(
         stats = {
             "total": len(pydantic_tasks),
             "finished": sum(task.status == "FINISHED" for task in pydantic_tasks),
-            "overdue": sum(task.due_date < today and task.status != "FINISHED" for task in pydantic_tasks),
-            "upcoming": sum(task.due_date > today and task.status != "FINISHED" for task in pydantic_tasks),
+            "overdue": sum(
+                task.due_date < today and task.status != "FINISHED"
+                for task in pydantic_tasks
+            ),
+            "upcoming": sum(
+                task.due_date > today and task.status != "FINISHED"
+                for task in pydantic_tasks
+            ),
         }
 
-        return {
-            **stats,
-            "tasks": pydantic_tasks
-        }
+        return {**stats, "tasks": pydantic_tasks}
 
     except Exception as e:
         print("❌ Error in get_all_tasks:", str(e))
         raise HTTPException(status_code=500, detail="Could not fetch tasks")
-    
+
 
 @router.patch("/{task_id}/status", response_model=task_schema.TaskOut)
 def update_task_status(
