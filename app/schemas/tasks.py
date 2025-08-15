@@ -9,9 +9,9 @@ class TaskCreate(BaseModel):
     title: str
     description: Optional[str]
     priority: Literal["LOW","MEDIUM","HIGH","CRITICAL"]
-    start_date: date
-    due_date: date
-    follow_up_date: Optional[date]
+    start_date: datetime
+    due_date: datetime
+    follow_up_date: Optional[datetime]
     tags: List[str] = []
     assigned_to: int
 
@@ -20,9 +20,9 @@ class TaskOut(BaseModel):
     title: str
     description: Optional[str]
     priority: Literal["LOW","MEDIUM","HIGH","CRITICAL"]
-    start_date: date
-    due_date: date
-    follow_up_date: Optional[date]
+    start_date: datetime
+    due_date: datetime
+    follow_up_date: Optional[datetime]
     tags: List[str]
     status: str
 
