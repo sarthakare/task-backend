@@ -7,7 +7,7 @@ app = FastAPI()
 # CORS configuration
 origins = [
     "http://localhost:3000",  # Dev frontend
-    "https://task-frontend-sarthak-thakares-projects.vercel.app",  # Uncomment in production
+    # "https://task-frontend-sarthak-thakares-projects.vercel.app",  # Uncomment in production
 ]
 
 app.add_middleware(

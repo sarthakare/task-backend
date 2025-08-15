@@ -5,7 +5,7 @@ from app.models import tasks as task_model
 from app.schemas import tasks as task_schema
 from app.models import user as user_model
 from app.utils.auth import get_current_user
-from datetime import date
+from datetime import datetime
 from fastapi import Path
 from sqlalchemy.exc import NoResultFound
 
@@ -56,7 +56,7 @@ def get_all_tasks(
 
         pydantic_tasks = [task_schema.TaskOut.model_validate(task) for task in tasks]
 
-        today = date.today()
+        today = datetime.today()
         stats = {
             "total": len(pydantic_tasks),
             "finished": sum(task.status == "FINISHED" for task in pydantic_tasks),
