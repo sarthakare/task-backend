@@ -42,6 +42,43 @@ def create_task(
     except Exception as e:
         print("❌ Error in create_task:", str(e))
         raise HTTPException(status_code=400, detail="Task creation failed")
+    
+    
+@router.put("/{task_id}", response_model=task_schema.TaskOut)
+def update_task(
+    task_id: int,
+    task_update: task_schema.TaskUpdate,  # This schema should allow partial updates
+    db: Session = Depends(get_db),
+    current_user: user_model.User = Depends(get_current_user)
+):
+    try:
+        print(f"📥 Updating task {task_id} with data:", task_update.dict())
+        # Fetch the task
+        task = db.query(task_model.Task).filter(
+            task_model.Task.id == task_id,
+            task_model.Task.assigned_to == current_user.id  # ensure only assignee can update
+        ).first()
+
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found or not assigned to you")
+
+        # Apply updates (only fields provided in request)
+        update_data = task_update.dict(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(task, key, value)
+
+        db.commit()
+        db.refresh(task)
+
+        print(f"✅ Task {task.id} updated with data: {update_data}")
+        return task
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("❌ Error in update_task:", str(e))
+        raise HTTPException(status_code=500, detail="Could not update task")
+
 
 @router.get("/all", response_model=task_schema.TaskListWithStats)
 def get_all_tasks(
