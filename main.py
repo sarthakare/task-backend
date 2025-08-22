@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import auth, tasks, user, task_log
+from app.routers import auth, tasks, user, task_log, reports
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -22,7 +22,8 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(user.router, prefix="/users", tags=["Users"])
 app.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
-app.include_router(task_log.router, prefix="/logs", tags=["Logs"])  # ✅ Corrected
+app.include_router(task_log.router, prefix="/logs", tags=["Logs"]) 
+app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 
 # Root route
 @app.get("/")
