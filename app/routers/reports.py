@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
-from sqlalchemy import func
+from typing import List
 from app.database import get_db
 from app.models import tasks as task_model, user as user_model
 from app.utils.auth import get_current_user
-from typing import List
 from app.schemas.reports import ReportOut
 
 router = APIRouter()
@@ -16,7 +15,6 @@ def get_reports(
     current_user: user_model.User = Depends(get_current_user)
 ):
     try:
-        # 🔹 Fetch all users (you may want to filter only active ones)
         users = db.query(user_model.User).all()
         today = datetime.utcnow()
 
@@ -32,14 +30,12 @@ def get_reports(
                 task.due_date and task.due_date < today and task.status != "FINISHED"
                 for task in tasks
             )
-            escalated_tasks = sum(
-                getattr(task, "is_escalated", False) for task in tasks
-            )
+            escalated_tasks = sum(getattr(task, "is_escalated", False) for task in tasks)
 
             # Completion rate %
             completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
 
-            # Avg Response Time (dummy: due_date - start_date) → you can refine logic
+            # Avg Response Time (example: due_date - start_date)
             response_times = [
                 (task.due_date - task.start_date).days
                 for task in tasks
@@ -56,6 +52,8 @@ def get_reports(
                 "escalatedTasks": escalated_tasks,
                 "completionRate": completion_rate,
                 "avgResponseTime": avg_response_time,
+                "department": getattr(user, "department", "N/A"),
+                "role": getattr(user, "role", "N/A"),
             })
 
         return reports

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Literal
 
 class ReportOut(BaseModel):
     userId: str
@@ -9,3 +10,5 @@ class ReportOut(BaseModel):
     escalatedTasks: int
     completionRate: float
     avgResponseTime: float
+    department: str
+    role: str
