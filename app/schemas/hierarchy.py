@@ -6,9 +6,9 @@ class HierarchyUser(BaseModel):
     name: str
     email: str
 
-    class Config:
-        orm_mode = True   # ✅ allows reading from SQLAlchemy objects
-
+    model_config = {
+        "from_attributes": True
+    }
 
 class DepartmentHierarchy(BaseModel):
     department: str
