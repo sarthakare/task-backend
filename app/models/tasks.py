@@ -23,4 +23,5 @@ class Task(Base):
     creator = relationship("User", foreign_keys=[created_by], back_populates="tasks")
     assignee = relationship("User", foreign_keys=[assigned_to], back_populates="assigned_tasks")
     logs = relationship("TaskLog", back_populates="task", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="task", cascade="all, delete-orphan")
 

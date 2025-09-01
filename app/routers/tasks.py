@@ -8,11 +8,12 @@ from app.utils.auth import get_current_user
 from datetime import datetime
 from fastapi import Path
 from sqlalchemy.exc import NoResultFound
+from app.services.notification_service import NotificationService
 
 router = APIRouter()
 
 @router.post("/create", response_model=task_schema.TaskOut)
-def create_task(
+async def create_task(
     task: task_schema.TaskCreate,
     db: Session = Depends(get_db),
     current_user: user_model.User = Depends(get_current_user)
@@ -37,6 +38,31 @@ def create_task(
         db.refresh(db_task)
 
         print("✅ Task created with ID:", db_task.id)
+        
+        # Send notification to assigned user if different from creator
+        if task.assigned_to != current_user.id:
+            try:
+                # Get the assigned user
+                assigned_user = db.query(user_model.User).filter(
+                    user_model.User.id == task.assigned_to
+                ).first()
+                
+                if assigned_user:
+                    # Create and send notification
+                    await NotificationService.create_task_assignment_notification(
+                        db=db,
+                        task=db_task,
+                        assigned_user=assigned_user,
+                        creator_user=current_user
+                    )
+                    print(f"✅ Notification sent to user {assigned_user.name} for task assignment")
+                else:
+                    print(f"⚠️ Assigned user {task.assigned_to} not found")
+                    
+            except Exception as notification_error:
+                print(f"⚠️ Error sending notification: {notification_error}")
+                # Don't fail the task creation if notification fails
+        
         return db_task
 
     except Exception as e:
@@ -115,7 +141,7 @@ def get_all_tasks(
 
 
 @router.patch("/{task_id}/status", response_model=task_schema.TaskOut)
-def update_task_status(
+async def update_task_status(
     task_id: int,
     status_update: task_schema.TaskStatusUpdate,  # no Depends()
     db: Session = Depends(get_db),
@@ -128,12 +154,41 @@ def update_task_status(
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
+        # Store old status for notification
+        old_status = task.status
+
         # Update the status
         task.status = status_update.status
         db.commit()
         db.refresh(task)
 
         print(f"✅ Task {task.id} status updated to {task.status}")
+        
+        # Send notification to task creator about status change
+        if task.created_by != current_user.id:
+            try:
+                # Get the task creator
+                creator_user = db.query(user_model.User).filter(
+                    user_model.User.id == task.created_by
+                ).first()
+                
+                if creator_user:
+                    # Create and send notification
+                    await NotificationService.create_task_status_change_notification(
+                        db=db,
+                        task=task,
+                        old_status=old_status,
+                        new_status=task.status,
+                        updated_by=current_user
+                    )
+                    print(f"✅ Status change notification sent to task creator {creator_user.name}")
+                else:
+                    print(f"⚠️ Task creator {task.created_by} not found")
+                    
+            except Exception as notification_error:
+                print(f"⚠️ Error sending status change notification: {notification_error}")
+                # Don't fail the status update if notification fails
+        
         return task
 
     except HTTPException:
