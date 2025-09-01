@@ -12,7 +12,6 @@ app = FastAPI()
 
 # CORS configuration
 origins = [
-    # "http://localhost:3000",  # Dev frontend
     "https://task-frontend-neon.vercel.app",  # Production frontend
 ]
 
