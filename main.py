@@ -13,6 +13,8 @@ app = FastAPI()
 # CORS configuration
 origins = [
     "https://task-frontend-neon.vercel.app",  # Production frontend
+    "http://localhost:3000",                  # Local development frontend
+    "http://127.0.0.1:3000",                 # Alternative localhost
 ]
 
 app.add_middleware(
