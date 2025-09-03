@@ -1,6 +1,7 @@
 # app/models/user.py
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.database import Base
 
 class User(Base):
@@ -9,10 +10,14 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    mobile = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     department = Column(String, nullable=False)
     role = Column(String, nullable=False)
+    supervisor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    tasks = relationship("Task", back_populates="creator", foreign_keys="Task.created_by")
-    assigned_tasks = relationship("Task", back_populates="assignee", foreign_keys="Task.assigned_to")  # ✅ new
-    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    # Relationships
+    supervisor = relationship("User", remote_side=[id], backref="subordinates")

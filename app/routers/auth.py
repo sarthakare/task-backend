@@ -43,8 +43,13 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
             "id": new_user.id,
             "name": new_user.name,
             "email": new_user.email,
+            "mobile": new_user.mobile,
             "role": new_user.role,
-            "department": new_user.department
+            "department": new_user.department,
+            "supervisor_id": new_user.supervisor_id,
+            "is_active": new_user.is_active,
+            "created_at": new_user.created_at.isoformat() if new_user.created_at else None,
+            "updated_at": new_user.updated_at.isoformat() if new_user.updated_at else None,
         }
     }
     
@@ -62,7 +67,12 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             "id": db_user.id,
             "name": db_user.name,
             "email": db_user.email,
+            "mobile": db_user.mobile,
             "department": db_user.department,
             "role": db_user.role,
+            "supervisor_id": db_user.supervisor_id,
+            "is_active": db_user.is_active,
+            "created_at": db_user.created_at.isoformat() if db_user.created_at else None,
+            "updated_at": db_user.updated_at.isoformat() if db_user.updated_at else None,
         }
     }

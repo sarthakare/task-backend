@@ -1,10 +1,76 @@
-from app.database import engine, Base
-from app.models import user, tasks, task_log
+# create_tables.py
+from sqlalchemy import create_engine, text
+from app.database import Base
+from app.models.user import User
+import os
 
-# Drop all existing tables
-Base.metadata.drop_all(bind=engine)
-print("✅ All existing tables dropped.")
+# Database URL
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./task_manager.db")
 
-# Create fresh tables
-Base.metadata.create_all(bind=engine)
-print("✅ Tables created successfully.")
+# Create engine
+engine = create_engine(DATABASE_URL)
+
+def create_tables():
+    """Create all tables"""
+    try:
+        # Drop existing tables if they exist
+        with engine.connect() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
+            conn.commit()
+        
+        # Create all tables
+        Base.metadata.create_all(bind=engine)
+        print("✅ All tables created successfully!")
+        
+        # Create a default admin user
+        create_default_admin()
+        
+    except Exception as e:
+        print(f"❌ Error creating tables: {e}")
+
+def create_default_admin():
+    """Create a default admin user"""
+    try:
+        from app.utils.security import get_password_hash
+        
+        with engine.connect() as conn:
+            # Insert default admin user
+            admin_password = get_password_hash("admin123")
+            
+            # Use PostgreSQL syntax for datetime
+            if "postgresql" in DATABASE_URL.lower():
+                conn.execute(text("""
+                    INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
+                    VALUES (:name, :email, :password, :department, :role, :is_active, NOW())
+                """), {
+                    "name": "Admin User",
+                    "email": "admin@example.com",
+                    "password": admin_password,
+                    "department": "IT",
+                    "role": "ADMIN",
+                    "is_active": True
+                })
+            else:
+                # SQLite syntax
+                conn.execute(text("""
+                    INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
+                    VALUES (:name, :email, :password, :department, :role, :is_active, datetime('now'))
+                """), {
+                    "name": "Admin User",
+                    "email": "admin@example.com",
+                    "password": admin_password,
+                    "department": "IT",
+                    "role": "ADMIN",
+                    "is_active": True
+                })
+            
+            conn.commit()
+            print("✅ Default admin user created!")
+            print("   Email: admin@example.com")
+            print("   Password: admin123")
+            
+    except Exception as e:
+        print(f"❌ Error creating default admin: {e}")
+
+if __name__ == "__main__":
+    create_tables()
