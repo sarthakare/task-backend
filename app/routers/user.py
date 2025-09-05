@@ -132,9 +132,7 @@ def get_departments():
 def get_roles():
     """Get list of available roles"""
     return [
-        "admin",
         "manager",
-        "supervisor", 
         "team_lead",
         "member",
         "intern"
