@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, text
 from app.database import Base
 from app.models.user import User
 from app.models.team import Team
+from app.models.project import Project
 import os
 
 # Database URL
@@ -16,6 +17,8 @@ def create_tables():
     try:
         # Drop existing tables if they exist (in correct order due to foreign keys)
         with engine.connect() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS project_teams CASCADE"))
+            conn.execute(text("DROP TABLE IF EXISTS projects CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS team_members CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS teams CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
