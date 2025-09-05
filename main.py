@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import auth, user
+from app.routers import auth, user, team
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -22,6 +22,7 @@ app.add_middleware(
 # Route registration
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(user.router, prefix="/users", tags=["Users"])
+app.include_router(team.router, prefix="/teams", tags=["Teams"])
 
 # Root route
 @app.get("/")

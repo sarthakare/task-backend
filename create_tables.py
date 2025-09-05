@@ -2,10 +2,11 @@
 from sqlalchemy import create_engine, text
 from app.database import Base
 from app.models.user import User
+from app.models.team import Team
 import os
 
 # Database URL
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./task_manager.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create engine
 engine = create_engine(DATABASE_URL)
@@ -13,8 +14,10 @@ engine = create_engine(DATABASE_URL)
 def create_tables():
     """Create all tables"""
     try:
-        # Drop existing tables if they exist
+        # Drop existing tables if they exist (in correct order due to foreign keys)
         with engine.connect() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS team_members CASCADE"))
+            conn.execute(text("DROP TABLE IF EXISTS teams CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
             conn.commit()
         
