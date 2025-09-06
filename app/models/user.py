@@ -23,3 +23,4 @@ class User(Base):
     supervisor = relationship("User", remote_side=[id], backref="subordinates")
     created_tasks = relationship("Task", foreign_keys="Task.created_by", back_populates="creator")
     assigned_tasks = relationship("Task", foreign_keys="Task.assigned_to", back_populates="assignee")
+    reminders = relationship("Reminder", back_populates="user")

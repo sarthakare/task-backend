@@ -52,6 +52,7 @@ class Task(Base):
     project = relationship("Project", back_populates="tasks")
     team = relationship("Team", back_populates="tasks")
     task_logs = relationship("TaskLog", back_populates="task", cascade="all, delete-orphan")
+    reminders = relationship("Reminder", back_populates="task")
 
 class TaskLog(Base):
     __tablename__ = "task_logs"
