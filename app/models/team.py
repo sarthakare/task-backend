@@ -27,3 +27,4 @@ class Team(Base):
     # Relationships
     leader = relationship("User", foreign_keys=[leader_id], backref="led_teams")
     members = relationship("User", secondary=team_members, backref="teams")
+    tasks = relationship("Task", back_populates="team")

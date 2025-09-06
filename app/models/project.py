@@ -28,3 +28,4 @@ class Project(Base):
     # Relationships
     manager = relationship("User", foreign_keys=[manager_id], backref="managed_projects")
     assigned_teams = relationship("Team", secondary=project_teams, backref="projects")
+    tasks = relationship("Task", back_populates="project")
