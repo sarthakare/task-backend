@@ -118,6 +118,35 @@ class HierarchyManager:
         
         return False
     
+    def can_update_task_status(self, user_id: int, task_creator_id: int, task_assignee_id: int) -> bool:
+        """Check if user can update task status (more permissive than full modification)"""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return False
+        
+        role = user.role.upper()
+        
+        # ADMIN and CEO can update status of all tasks
+        if role in ['ADMIN', 'CEO']:
+            return True
+        
+        # User can update status of their own created tasks
+        if user_id == task_creator_id:
+            return True
+        
+        # User can update status if they are assigned to the task
+        if user_id == task_assignee_id:
+            return True
+        
+        # Check if user can update status based on role-based scope
+        viewable_user_ids = self.get_viewable_user_ids_by_role(user_id)
+        
+        # User can update status if the CREATOR is in their scope
+        if task_creator_id in viewable_user_ids:
+            return True
+        
+        return False
+    
     def get_assignable_users(self, user_id: int) -> List[User]:
         """Get list of users that can be assigned tasks by the given user"""
         assignable_users = []

@@ -88,7 +88,6 @@ To create a new user, send a POST request to `/users/` with:
 - supervisor
 - team_lead
 - member
-- intern
 
 ## Supervisor System
 

@@ -232,6 +232,71 @@ def create_task(
     
     return db_task
 
+@router.put("/{task_id}/status", response_model=TaskOut)
+def update_task_status(
+    task_id: int,
+    status_update: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update only the status of a task with more permissive access control"""
+    hierarchy_manager = HierarchyManager(db)
+    
+    # Get the task
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Check if user can update status of this task
+    if not hierarchy_manager.can_update_task_status(current_user.id, db_task.created_by, db_task.assigned_to):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to update this task's status"
+        )
+    
+    # Validate status
+    new_status = status_update.get('status')
+    if not new_status:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Status is required"
+        )
+    
+    # Validate status value
+    valid_statuses = [status.value for status in TaskStatusEnum]
+    if new_status not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    # Update only the status
+    db_task.status = new_status
+    
+    # Set completed_at if status is FINISHED
+    if new_status == TaskStatusEnum.FINISHED and db_task.completed_at is None:
+        db_task.completed_at = datetime.utcnow()
+    elif new_status != TaskStatusEnum.FINISHED:
+        db_task.completed_at = None
+    
+    db_task.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_task)
+    
+    # Load relationships for response
+    db_task = db.query(Task).options(
+        joinedload(Task.creator),
+        joinedload(Task.assignee),
+        joinedload(Task.project),
+        joinedload(Task.team),
+        joinedload(Task.task_logs)
+    ).filter(Task.id == db_task.id).first()
+    
+    return db_task
+
 @router.put("/{task_id}", response_model=TaskOut)
 def update_task(
     task_id: int,

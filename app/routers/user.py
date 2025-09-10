@@ -104,12 +104,11 @@ def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: u
     
     # Role hierarchy validation
     role_hierarchy = {
-        "ADMIN": ["CEO", "manager", "team_lead", "member", "intern"],
-        "CEO": ["manager", "team_lead", "member", "intern"],
-        "manager": ["team_lead", "member", "intern"],
-        "team_lead": ["member", "intern"],
-        "member": ["intern"],
-        "intern": []
+        "ADMIN": ["CEO", "manager", "team_lead", "member"],
+        "CEO": ["manager", "team_lead", "member"],
+        "manager": ["team_lead", "member"],
+        "team_lead": ["member"],
+        "member": []
     }
     
     allowed_roles = role_hierarchy.get(current_user.role.upper(), [])
@@ -273,14 +272,13 @@ def get_departments(current_user: user_model.User = Depends(get_current_user)):
 @router.get("/roles/")
 def get_roles(current_user: user_model.User = Depends(get_current_user)):
     """Get list of available roles based on hierarchy"""
-    # Define role hierarchy: admin -> ceo -> manager -> team_lead -> member -> intern
+    # Define role hierarchy: admin -> ceo -> manager -> team_lead -> member
     role_hierarchy = {
-        "ADMIN": ["CEO", "manager", "team_lead", "member", "intern"],
-        "CEO": ["manager", "team_lead", "member", "intern"],
-        "manager": ["team_lead", "member", "intern"],
-        "team_lead": ["member", "intern"],
-        "member": ["intern"],
-        "intern": []
+        "ADMIN": ["CEO", "manager", "team_lead", "member"],
+        "CEO": ["manager", "team_lead", "member"],
+        "manager": ["team_lead", "member"],
+        "team_lead": ["member"],
+        "member": []
     }
     
     # Get available roles for current user
@@ -303,7 +301,7 @@ def get_user_stats(db: Session = Depends(get_db)):
     
     # Count by role (excluding admin)
     role_counts = {}
-    roles = ['CEO', 'manager', 'team_lead', 'member', 'intern']
+    roles = ['CEO', 'manager', 'team_lead', 'member']
     for role in roles:
         count = db.query(user_model.User).filter(
             user_model.User.role == role,
