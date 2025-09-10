@@ -19,6 +19,7 @@ def create_tables():
     try:
         # Drop existing tables if they exist (in correct order due to foreign keys)
         with engine.connect() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS reminders CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS task_logs CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS tasks CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS project_teams CASCADE"))
@@ -54,27 +55,31 @@ def create_default_admin():
             if admin_exists == 0:
                 if "postgresql" in DATABASE_URL.lower():
                     conn.execute(text("""
-                        INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
-                        VALUES (:name, :email, :password, :department, :role, :is_active, NOW())
+                        INSERT INTO users (name, email, mobile, hashed_password, department, role, supervisor_id, is_active, created_at)
+                        VALUES (:name, :email, :mobile, :password, :department, :role, :supervisor_id, :is_active, NOW())
                     """), {
                         "name": "System Administrator",
                         "email": "admin@example.com",
+                        "mobile": "+1-555-0000",
                         "password": admin_password,
                         "department": "IT",
                         "role": "ADMIN",
+                        "supervisor_id": None,
                         "is_active": True
                     })
                 else:
                     # SQLite syntax
                     conn.execute(text("""
-                        INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
-                        VALUES (:name, :email, :password, :department, :role, :is_active, datetime('now'))
+                        INSERT INTO users (name, email, mobile, hashed_password, department, role, supervisor_id, is_active, created_at)
+                        VALUES (:name, :email, :mobile, :password, :department, :role, :supervisor_id, :is_active, datetime('now'))
                     """), {
                         "name": "System Administrator",
                         "email": "admin@example.com",
+                        "mobile": "+1-555-0000",
                         "password": admin_password,
                         "department": "IT",
                         "role": "ADMIN",
+                        "supervisor_id": None,
                         "is_active": True
                     })
                 
