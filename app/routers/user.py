@@ -96,7 +96,14 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: user_model.User = Depends(get_current_user)):
-    """Create a new user"""
+    """Create a new user - Only ADMIN and CEO can create users"""
+    # Authorization check: Only ADMIN and CEO can create users
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Only ADMIN and CEO can create users"
+        )
+    
     # Check if email already exists
     existing_user = db.query(user_model.User).filter(user_model.User.email == user.email).first()
     if existing_user:
@@ -158,11 +165,19 @@ def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: u
     return db_user
 
 @router.put("/{user_id}", response_model=UserOut)
-def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
-    """Update a user"""
+def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: user_model.User = Depends(get_current_user)):
+    """Update a user - Only ADMIN and CEO can update user status"""
     db_user = db.query(user_model.User).filter(user_model.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Authorization check for sensitive fields: Only ADMIN and CEO can modify user status and role
+    if user_update.is_active is not None or user_update.role is not None:
+        if current_user.role.upper() not in ["ADMIN", "CEO"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Only ADMIN and CEO can modify user status and role"
+            )
     
     # Check if email already exists for another user
     if user_update.email and user_update.email != db_user.email:
@@ -202,11 +217,25 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
     return db_user
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    """Delete a user (soft delete by setting is_active to False)"""
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: user_model.User = Depends(get_current_user)):
+    """Delete a user (soft delete by setting is_active to False) - Only ADMIN and CEO can delete users"""
+    # Authorization check: Only ADMIN and CEO can delete users
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Only ADMIN and CEO can delete users"
+        )
+    
     db_user = db.query(user_model.User).filter(user_model.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent users from deleting themselves
+    if db_user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="You cannot delete your own account"
+        )
     
     # Soft delete
     db_user.is_active = False
