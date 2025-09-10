@@ -20,9 +20,12 @@ def get_dashboard_overview(
 ):
     """Get dashboard overview statistics"""
     
-    # Get total counts
-    total_users = db.query(User).count()
-    active_users = db.query(User).filter(User.is_active == True).count()
+    # Get total counts (excluding admin users)
+    total_users = db.query(User).filter(User.role != "ADMIN").count()
+    active_users = db.query(User).filter(
+        User.is_active == True,
+        User.role != "ADMIN"
+    ).count()
     total_projects = db.query(Project).count()
     active_projects = db.query(Project).filter(Project.status == 'active').count()
     

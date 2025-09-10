@@ -32,7 +32,7 @@ def create_tables():
         Base.metadata.create_all(bind=engine)
         print("✅ All tables created successfully!")
         
-        # Create a default admin user
+        # Create default admin user
         create_default_admin()
         
     except Exception as e:
@@ -44,40 +44,46 @@ def create_default_admin():
         from app.utils.security import get_password_hash
         
         with engine.connect() as conn:
-            # Insert default admin user
+            # Hash password
             admin_password = get_password_hash("admin123")
             
-            # Use PostgreSQL syntax for datetime
-            if "postgresql" in DATABASE_URL.lower():
-                conn.execute(text("""
-                    INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
-                    VALUES (:name, :email, :password, :department, :role, :is_active, NOW())
-                """), {
-                    "name": "Admin User",
-                    "email": "admin@example.com",
-                    "password": admin_password,
-                    "department": "IT",
-                    "role": "ADMIN",
-                    "is_active": True
-                })
-            else:
-                # SQLite syntax
-                conn.execute(text("""
-                    INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
-                    VALUES (:name, :email, :password, :department, :role, :is_active, datetime('now'))
-                """), {
-                    "name": "Admin User",
-                    "email": "admin@example.com",
-                    "password": admin_password,
-                    "department": "IT",
-                    "role": "ADMIN",
-                    "is_active": True
-                })
+            # Check if admin user already exists
+            admin_exists = conn.execute(text("SELECT COUNT(*) FROM users WHERE email = 'admin@example.com'")).scalar()
             
-            conn.commit()
-            print("✅ Default admin user created!")
-            print("   Email: admin@example.com")
-            print("   Password: admin123")
+            # Create admin user if doesn't exist
+            if admin_exists == 0:
+                if "postgresql" in DATABASE_URL.lower():
+                    conn.execute(text("""
+                        INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
+                        VALUES (:name, :email, :password, :department, :role, :is_active, NOW())
+                    """), {
+                        "name": "System Administrator",
+                        "email": "admin@example.com",
+                        "password": admin_password,
+                        "department": "IT",
+                        "role": "ADMIN",
+                        "is_active": True
+                    })
+                else:
+                    # SQLite syntax
+                    conn.execute(text("""
+                        INSERT INTO users (name, email, hashed_password, department, role, is_active, created_at)
+                        VALUES (:name, :email, :password, :department, :role, :is_active, datetime('now'))
+                    """), {
+                        "name": "System Administrator",
+                        "email": "admin@example.com",
+                        "password": admin_password,
+                        "department": "IT",
+                        "role": "ADMIN",
+                        "is_active": True
+                    })
+                
+                conn.commit()
+                print("✅ Default admin user created!")
+                print("   Email: admin@example.com")
+                print("   Password: admin123")
+            else:
+                print("ℹ️  Admin user already exists")
             
     except Exception as e:
         print(f"❌ Error creating default admin: {e}")

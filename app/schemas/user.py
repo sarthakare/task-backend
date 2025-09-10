@@ -65,6 +65,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     supervisor_id: Optional[int] = None
     is_active: Optional[bool] = None
+    password: Optional[str] = None
 
     model_config = {
         "from_attributes": True
