@@ -27,8 +27,15 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     return project
 
 @router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
-    """Create a new project"""
+def create_project(project_data: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Create a new project - Only admin and CEO can create projects"""
+    
+    # Check if user has permission to create projects
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin and CEO users can create projects"
+        )
     
     # Check if project name already exists
     existing_project = db.query(Project).filter(Project.name == project_data.name).first()
@@ -89,8 +96,15 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     return db_project
 
 @router.put("/{project_id}", response_model=ProjectOut)
-def update_project(project_id: int, project_update: ProjectUpdate, db: Session = Depends(get_db)):
-    """Update a project"""
+def update_project(project_id: int, project_update: ProjectUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update a project - Only admin and CEO can edit projects"""
+    
+    # Check if user has permission to edit projects
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin and CEO users can edit projects"
+        )
     db_project = db.query(Project).filter(Project.id == project_id).first()
     if not db_project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -151,8 +165,15 @@ def update_project(project_id: int, project_update: ProjectUpdate, db: Session =
     return db_project
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: int, db: Session = Depends(get_db)):
-    """Delete a project"""
+def delete_project(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a project - Only admin and CEO can delete projects"""
+    
+    # Check if user has permission to delete projects
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin and CEO users can delete projects"
+        )
     db_project = db.query(Project).filter(Project.id == project_id).first()
     if not db_project:
         raise HTTPException(status_code=404, detail="Project not found")

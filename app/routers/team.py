@@ -25,8 +25,15 @@ def get_team(team_id: int, db: Session = Depends(get_db)):
     return team
 
 @router.post("/", response_model=TeamOut, status_code=status.HTTP_201_CREATED)
-def create_team(team_data: TeamCreate, db: Session = Depends(get_db)):
-    """Create a new team"""
+def create_team(team_data: TeamCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Create a new team - Only admin and CEO can create teams"""
+    
+    # Check if user has permission to create teams
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin and CEO users can create teams"
+        )
     
     # Check if team name already exists
     existing_team = db.query(Team).filter(Team.name == team_data.name).first()
@@ -81,8 +88,15 @@ def create_team(team_data: TeamCreate, db: Session = Depends(get_db)):
     return db_team
 
 @router.put("/{team_id}", response_model=TeamOut)
-def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depends(get_db)):
-    """Update a team"""
+def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update a team - Only admin and CEO can edit teams"""
+    
+    # Check if user has permission to edit teams
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin and CEO users can edit teams"
+        )
     db_team = db.query(Team).filter(Team.id == team_id).first()
     if not db_team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -138,8 +152,15 @@ def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depends(get
     return db_team
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_team(team_id: int, db: Session = Depends(get_db)):
-    """Delete a team"""
+def delete_team(team_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a team - Only admin and CEO can delete teams"""
+    
+    # Check if user has permission to delete teams
+    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin and CEO users can delete teams"
+        )
     db_team = db.query(Team).filter(Team.id == team_id).first()
     if not db_team:
         raise HTTPException(status_code=404, detail="Team not found")
