@@ -8,8 +8,8 @@ from app.models.task import Task, TaskLog
 from app.models.reminder import Reminder
 import os
 
-# Database URL
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Database URL - Use SQLite for local development if DATABASE_URL not set
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./task_manager.db")
 
 # Create engine
 engine = create_engine(DATABASE_URL)
@@ -31,13 +31,13 @@ def create_tables():
         
         # Create all tables
         Base.metadata.create_all(bind=engine)
-        print("✅ All tables created successfully!")
+        print("[SUCCESS] All tables created successfully!")
         
         # Create default admin user
         create_default_admin()
         
     except Exception as e:
-        print(f"❌ Error creating tables: {e}")
+        print(f"[ERROR] Error creating tables: {e}")
 
 def create_default_admin():
     """Create a default admin user"""
@@ -84,14 +84,14 @@ def create_default_admin():
                     })
                 
                 conn.commit()
-                print("✅ Default admin user created!")
+                print("[SUCCESS] Default admin user created!")
                 print("   Email: admin@example.com")
                 print("   Password: admin123")
             else:
-                print("ℹ️  Admin user already exists")
+                print("[INFO] Admin user already exists")
             
     except Exception as e:
-        print(f"❌ Error creating default admin: {e}")
+        print(f"[ERROR] Error creating default admin: {e}")
 
 if __name__ == "__main__":
     create_tables()

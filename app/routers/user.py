@@ -283,13 +283,13 @@ def get_supervisors(
 def get_departments(current_user: user_model.User = Depends(get_current_user)):
     """Get list of available departments"""
     base_departments = [
-        "engineering",
-        "marketing", 
-        "sales",
-        "hr",
-        "finance",
-        "operations",
-        "it"
+        "Engineering",
+        "Marketing", 
+        "Sales",
+        "HR",
+        "Finance",
+        "Operations",
+        "IT"
     ]
     
     # Only admin can create CEO users with "All" department
@@ -300,19 +300,9 @@ def get_departments(current_user: user_model.User = Depends(get_current_user)):
 
 @router.get("/roles/")
 def get_roles(current_user: user_model.User = Depends(get_current_user)):
-    """Get list of available roles based on hierarchy"""
-    # Define role hierarchy: admin -> ceo -> manager -> team_lead -> member
-    role_hierarchy = {
-        "ADMIN": ["CEO", "manager", "team_lead", "member"],
-        "CEO": ["manager", "team_lead", "member"],
-        "manager": ["team_lead", "member"],
-        "team_lead": ["member"],
-        "member": []
-    }
-    
-    # Get available roles for current user
-    available_roles = role_hierarchy.get(current_user.role.upper(), [])
-    return available_roles
+    """Get list of available roles"""
+    # Return all available roles for any user
+    return ["CEO", "manager", "team_lead", "member"]
 
 @router.get("/stats/")
 def get_user_stats(db: Session = Depends(get_db)):
@@ -340,7 +330,7 @@ def get_user_stats(db: Session = Depends(get_db)):
     
     # Count by department (excluding admin users)
     department_counts = {}
-    departments = ['All', 'engineering', 'marketing', 'sales', 'hr', 'finance', 'operations', 'it']
+    departments = ['All', 'Engineering', 'Marketing', 'Sales', 'HR', 'Finance', 'Operations', 'IT']
     for dept in departments:
         count = db.query(user_model.User).filter(
             user_model.User.department == dept,
