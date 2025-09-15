@@ -9,7 +9,8 @@ active_connections = []
 
 # CORS configuration
 origins = [
-    "https://task-frontend-neon.vercel.app",  # Production frontend
+    "https://task-frontend-neon.vercel.app",  # Production frontend - vercel
+    "https://task-frontend-production-b4dc.up.railway.app",  # Production frontend - railway
     "http://localhost:3000",                  # Local development frontend
     "http://127.0.0.1:3000",                 # Alternative localhost
 ]
