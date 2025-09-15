@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from app.routers import auth, user, team, project, task, dashboard, reminder
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# WebSocket connection management
+active_connections = []
 
 # CORS configuration
 origins = [
@@ -36,3 +39,16 @@ def read_root():
 @app.get("/health")
 def health():
   return {"status": "ok"}
+
+# WebSocket endpoint for real-time communication
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Echo back the received message
+            await websocket.send_text(f"Message received: {data}")
+    except WebSocketDisconnect:
+        active_connections.remove(websocket)
