@@ -2,6 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import datetime
+import asyncio
+import threading
 from app.database import get_db
 from app.models.team import Team
 from app.models.user import User
@@ -9,6 +12,87 @@ from app.schemas.team import TeamCreate, TeamUpdate, TeamOut, TeamMemberAdd
 from app.utils.auth import get_current_user
 
 router = APIRouter()
+
+# WebSocket notification helper functions
+async def send_team_notification(
+    notification_type: str,
+    title: str,
+    message: str,
+    target_user_ids: List[int] = None,
+    team_data: dict = None
+):
+    """Send team-related WebSocket notification"""
+    try:
+        # Import here to avoid circular imports
+        from main import send_toast, MessageTarget, send_to_user, broadcast_message, active_connections
+        import json
+        
+        print(f"Sending team notification: {notification_type} to users {target_user_ids}")
+        print(f"Active connections: {list(active_connections.keys())}")
+        
+        notification_data = {
+            "type": "team_notification",
+            "notification_type": notification_type,
+            "title": title,
+            "message": message,
+            "team_data": team_data or {},
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        json_message = json.dumps(notification_data)
+        
+        if target_user_ids:
+            # Send to specific users
+            for user_id in target_user_ids:
+                print(f"Attempting to send to user {user_id}")
+                await send_to_user(user_id, json_message)
+        else:
+            print("Broadcasting to all users")
+            await broadcast_message(json_message)
+            
+    except Exception as e:
+        print(f"Error sending team notification: {e}")
+        import traceback
+        traceback.print_exc()
+
+def send_team_notification_async(
+    notification_type: str,
+    title: str,
+    message: str,
+    target_user_ids: List[int] = None,
+    team_data: dict = None
+):
+    """Helper function to send team notifications asynchronously from sync context"""
+    def run_notification():
+        try:
+            # Ensure team_data is properly serialized
+            if team_data:
+                serialized_team_data = {}
+                for key, value in team_data.items():
+                    if hasattr(value, 'value'):  # Handle enums
+                        serialized_team_data[key] = value.value
+                    elif hasattr(value, 'isoformat'):  # Handle datetime
+                        serialized_team_data[key] = value.isoformat()
+                    else:
+                        serialized_team_data[key] = value
+            else:
+                serialized_team_data = None
+                
+            asyncio.run(send_team_notification(
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                target_user_ids=target_user_ids,
+                team_data=serialized_team_data
+            ))
+        except Exception as e:
+            print(f"Error in team notification thread: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Run in a separate thread to avoid blocking the main request
+    thread = threading.Thread(target=run_notification, daemon=True)
+    thread.start()
 
 @router.get("/", response_model=List[TeamOut])
 def get_all_teams(db: Session = Depends(get_db)):
@@ -84,6 +168,36 @@ def create_team(team_data: TeamCreate, db: Session = Depends(get_db), current_us
     db_team.members = members
     db.commit()
     db.refresh(db_team)
+    
+    # Send WebSocket notification to all team members
+    try:
+        # Create team data for notification
+        team_data = {
+            "team_id": db_team.id,
+            "team_name": db_team.name,
+            "description": db_team.description,
+            "department": db_team.department,
+            "status": db_team.status,
+            "leader_name": leader.name,
+            "member_count": len(members),
+            "created_by": current_user.name
+        }
+        
+        # Get all team member IDs
+        team_member_ids = [member.id for member in members]
+        
+        # Send notification to all team members
+        send_team_notification_async(
+            notification_type="team_created",
+            title="New Team Created",
+            message=f"You have been added to the new team '{db_team.name}' by {current_user.name}",
+            target_user_ids=team_member_ids,
+            team_data=team_data
+        )
+        
+    except Exception as e:
+        print(f"Error sending team creation notification: {e}")
+        # Don't fail the main operation if notification fails
     
     return db_team
 

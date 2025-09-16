@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+import asyncio
+import threading
 from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
@@ -11,6 +13,87 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectOut, Projec
 from app.utils.auth import get_current_user
 
 router = APIRouter()
+
+# WebSocket notification helper functions
+async def send_project_notification(
+    notification_type: str,
+    title: str,
+    message: str,
+    target_user_ids: List[int] = None,
+    project_data: dict = None
+):
+    """Send project-related WebSocket notification"""
+    try:
+        # Import here to avoid circular imports
+        from main import send_toast, MessageTarget, send_to_user, broadcast_message, active_connections
+        import json
+        
+        print(f"Sending project notification: {notification_type} to users {target_user_ids}")
+        print(f"Active connections: {list(active_connections.keys())}")
+        
+        notification_data = {
+            "type": "project_notification",
+            "notification_type": notification_type,
+            "title": title,
+            "message": message,
+            "project_data": project_data or {},
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        json_message = json.dumps(notification_data)
+        
+        if target_user_ids:
+            # Send to specific users
+            for user_id in target_user_ids:
+                print(f"Attempting to send to user {user_id}")
+                await send_to_user(user_id, json_message)
+        else:
+            print("Broadcasting to all users")
+            await broadcast_message(json_message)
+            
+    except Exception as e:
+        print(f"Error sending project notification: {e}")
+        import traceback
+        traceback.print_exc()
+
+def send_project_notification_async(
+    notification_type: str,
+    title: str,
+    message: str,
+    target_user_ids: List[int] = None,
+    project_data: dict = None
+):
+    """Helper function to send project notifications asynchronously from sync context"""
+    def run_notification():
+        try:
+            # Ensure project_data is properly serialized
+            if project_data:
+                serialized_project_data = {}
+                for key, value in project_data.items():
+                    if hasattr(value, 'value'):  # Handle enums
+                        serialized_project_data[key] = value.value
+                    elif hasattr(value, 'isoformat'):  # Handle datetime
+                        serialized_project_data[key] = value.isoformat()
+                    else:
+                        serialized_project_data[key] = value
+            else:
+                serialized_project_data = None
+                
+            asyncio.run(send_project_notification(
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                target_user_ids=target_user_ids,
+                project_data=serialized_project_data
+            ))
+        except Exception as e:
+            print(f"Error in project notification thread: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Run in a separate thread to avoid blocking the main request
+    thread = threading.Thread(target=run_notification, daemon=True)
+    thread.start()
 
 @router.get("/", response_model=List[ProjectOut])
 def get_all_projects(db: Session = Depends(get_db)):
@@ -92,6 +175,49 @@ def create_project(project_data: ProjectCreate, db: Session = Depends(get_db), c
         db_project.assigned_teams = assigned_teams
         db.commit()
         db.refresh(db_project)
+    
+    # Send WebSocket notification to all project team members
+    try:
+        # Create project data for notification
+        project_data = {
+            "project_id": db_project.id,
+            "project_name": db_project.name,
+            "description": db_project.description,
+            "status": db_project.status,
+            "start_date": db_project.start_date,
+            "end_date": db_project.end_date,
+            "manager_name": manager.name,
+            "team_count": len(assigned_teams) if assigned_teams else 0,
+            "created_by": current_user.name
+        }
+        
+        # Get all team member IDs from assigned teams
+        project_member_ids = []
+        if assigned_teams:
+            for team in assigned_teams:
+                # Get all members from each team
+                team_members = db.query(User).join(User.teams).filter(Team.id == team.id).all()
+                project_member_ids.extend([member.id for member in team_members])
+        
+        # Add project manager to the list
+        if manager.id not in project_member_ids:
+            project_member_ids.append(manager.id)
+        
+        # Remove duplicates
+        project_member_ids = list(set(project_member_ids))
+        
+        # Send notification to all project members
+        send_project_notification_async(
+            notification_type="project_created",
+            title="New Project Created",
+            message=f"You have been assigned to the new project '{db_project.name}' by {current_user.name}",
+            target_user_ids=project_member_ids,
+            project_data=project_data
+        )
+        
+    except Exception as e:
+        print(f"Error sending project creation notification: {e}")
+        # Don't fail the main operation if notification fails
     
     return db_project
 
