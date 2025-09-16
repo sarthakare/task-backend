@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 from typing import List, Optional
 from datetime import datetime
+import asyncio
 
 from app.database import get_db
 from app.models import Task, TaskLog, User, Project, Team, TaskStatus as TaskStatusEnum
@@ -12,6 +13,95 @@ from app.utils.auth import get_current_user
 from app.utils.hierarchy import HierarchyManager
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+# Import WebSocket notification functions from main.py
+# We'll need to import these functions to send notifications
+async def send_task_notification(
+    notification_type: str,
+    title: str,
+    message: str,
+    target_user_id: Optional[int] = None,
+    task_data: Optional[dict] = None
+):
+    """Send task-related WebSocket notification"""
+    try:
+        # Import here to avoid circular imports
+        from main import send_toast, MessageTarget, send_to_user, broadcast_message, active_connections
+        import json
+        
+        print(f"Sending task notification: {notification_type} to user {target_user_id}")
+        print(f"Active connections: {list(active_connections.keys())}")
+        
+        notification_data = {
+            "type": "task_notification",
+            "notification_type": notification_type,
+            "title": title,
+            "message": message,
+            "task_data": task_data or {},
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        json_message = json.dumps(notification_data)
+        
+        if target_user_id:
+            print(f"Attempting to send to user {target_user_id}")
+            await send_to_user(target_user_id, json_message)
+        else:
+            print("Broadcasting to all users")
+            await broadcast_message(json_message)
+            
+    except Exception as e:
+        print(f"Error sending task notification: {e}")
+        import traceback
+        traceback.print_exc()
+        # Don't fail the main operation if notification fails
+
+def serialize_enum(obj):
+    """Helper function to serialize enum objects to their string values"""
+    if hasattr(obj, 'value'):
+        return obj.value
+    return str(obj)
+
+def send_notification_async(
+    notification_type: str,
+    title: str,
+    message: str,
+    target_user_id: Optional[int] = None,
+    task_data: Optional[dict] = None
+):
+    """Helper function to send notifications asynchronously from sync context"""
+    import threading
+    
+    def run_notification():
+        try:
+            # Ensure task_data is properly serialized
+            if task_data:
+                serialized_task_data = {}
+                for key, value in task_data.items():
+                    if hasattr(value, 'value'):  # Handle enums
+                        serialized_task_data[key] = value.value
+                    elif hasattr(value, 'isoformat'):  # Handle datetime
+                        serialized_task_data[key] = value.isoformat()
+                    else:
+                        serialized_task_data[key] = value
+            else:
+                serialized_task_data = None
+                
+            asyncio.run(send_task_notification(
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                target_user_id=target_user_id,
+                task_data=serialized_task_data
+            ))
+        except Exception as e:
+            print(f"Error in notification thread: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Run in a separate thread to avoid blocking the main request
+    thread = threading.Thread(target=run_notification, daemon=True)
+    thread.start()
 
 @router.get("/", response_model=List[TaskOut])
 def get_all_tasks(
@@ -230,6 +320,45 @@ def create_task(
         joinedload(Task.task_logs)
     ).filter(Task.id == db_task.id).first()
     
+    # Send WebSocket notification to the assigned user
+    try:
+        # Create task data for notification
+        task_data = {
+            "task_id": db_task.id,
+            "title": db_task.title,
+            "description": db_task.description,
+            "priority": db_task.priority,
+            "status": db_task.status,
+            "due_date": db_task.due_date,
+            "project_name": db_task.project.name if db_task.project else None,
+            "team_name": db_task.team.name if db_task.team else None,
+            "creator_name": db_task.creator.name,
+            "assignee_name": db_task.assignee.name
+        }
+        
+        # Send notification to assigned user
+        send_notification_async(
+            notification_type="task_assigned",
+            title="New Task Assigned",
+            message=f"You have been assigned a new task: '{db_task.title}' by {db_task.creator.name}",
+            target_user_id=db_task.assigned_to,
+            task_data=task_data
+        )
+        
+        # Also send a general notification to team/department if applicable
+        if db_task.team:
+            send_notification_async(
+                notification_type="team_task_created",
+                title="New Team Task",
+                message=f"New task '{db_task.title}' has been created for team {db_task.team.name}",
+                target_user_id=None,  # Broadcast to team
+                task_data=task_data
+            )
+            
+    except Exception as e:
+        print(f"Error sending task assignment notification: {e}")
+        # Don't fail the main operation if notification fails
+    
     return db_task
 
 @router.put("/{task_id}/status", response_model=TaskOut)
@@ -294,6 +423,40 @@ def update_task_status(
         joinedload(Task.team),
         joinedload(Task.task_logs)
     ).filter(Task.id == db_task.id).first()
+    
+    # Send WebSocket notification for status update
+    try:
+        task_data = {
+            "task_id": db_task.id,
+            "title": db_task.title,
+            "status": db_task.status,
+            "updated_by": current_user.name,
+            "assignee_name": db_task.assignee.name,
+            "creator_name": db_task.creator.name
+        }
+        
+        # Notify the task creator about status change
+        if db_task.created_by != current_user.id:
+            send_notification_async(
+                notification_type="task_status_updated",
+                title="Task Status Updated",
+                message=f"Task '{db_task.title}' status has been updated to '{db_task.status}' by {current_user.name}",
+                target_user_id=db_task.created_by,
+                task_data=task_data
+            )
+        
+        # Notify the assignee if they're not the one updating
+        if db_task.assigned_to != current_user.id:
+            send_notification_async(
+                notification_type="task_status_updated",
+                title="Task Status Updated",
+                message=f"Your task '{db_task.title}' status has been updated to '{db_task.status}' by {current_user.name}",
+                target_user_id=db_task.assigned_to,
+                task_data=task_data
+            )
+            
+    except Exception as e:
+        print(f"Error sending task status update notification: {e}")
     
     return db_task
 
@@ -388,6 +551,64 @@ def update_task(
         joinedload(Task.team),
         joinedload(Task.task_logs)
     ).filter(Task.id == db_task.id).first()
+    
+    # Send WebSocket notification for task update
+    try:
+        task_data = {
+            "task_id": db_task.id,
+            "title": db_task.title,
+            "status": db_task.status,
+            "priority": db_task.priority,
+            "updated_by": current_user.name,
+            "assignee_name": db_task.assignee.name,
+            "creator_name": db_task.creator.name
+        }
+        
+        # Check if assignment changed
+        assignment_changed = (task_update.assigned_to and 
+                            task_update.assigned_to != db_task.assigned_to)
+        
+        if assignment_changed:
+            # Notify the new assignee
+            send_notification_async(
+                notification_type="task_reassigned",
+                title="Task Reassigned",
+                message=f"You have been assigned task '{db_task.title}' by {current_user.name}",
+                target_user_id=db_task.assigned_to,
+                task_data=task_data
+            )
+            
+            # Notify the previous assignee if different
+            if db_task.assigned_to != current_user.id:
+                send_notification_async(
+                    notification_type="task_reassigned",
+                    title="Task Reassigned",
+                    message=f"Task '{db_task.title}' has been reassigned by {current_user.name}",
+                    target_user_id=db_task.assigned_to,
+                    task_data=task_data
+                )
+        else:
+            # General task update notification
+            if db_task.assigned_to != current_user.id:
+                send_notification_async(
+                    notification_type="task_updated",
+                    title="Task Updated",
+                    message=f"Task '{db_task.title}' has been updated by {current_user.name}",
+                    target_user_id=db_task.assigned_to,
+                    task_data=task_data
+                )
+            
+            if db_task.created_by != current_user.id:
+                send_notification_async(
+                    notification_type="task_updated",
+                    title="Task Updated",
+                    message=f"Task '{db_task.title}' has been updated by {current_user.name}",
+                    target_user_id=db_task.created_by,
+                    task_data=task_data
+                )
+                
+    except Exception as e:
+        print(f"Error sending task update notification: {e}")
     
     return db_task
 

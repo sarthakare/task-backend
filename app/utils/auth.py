@@ -40,3 +40,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         )
     
     return user
+
+def verify_token(token: str) -> dict:
+    """Verify JWT token and return payload without raising exceptions"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError:
+        return None
