@@ -261,70 +261,14 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
                 
                 # Handle different message types
                 if received_data.get("type") == "message":
-                    # Regular message - determine target
-                    target = MessageTarget(received_data.get("target", "all"))
-                    target_id = received_data.get("target_id")
-                    content = received_data.get("content", data)
-                    
-                    # Send based on target
-                    if target == MessageTarget.ALL:
-                        await send_toast(
-                            toast_type="success",
-                            title=f"Message from {user_name}",
-                            message=content,
-                            target=MessageTarget.ALL,
-                            data={"original_message": received_data, "sender": user_name}
-                        )
-                    elif target == MessageTarget.USER and target_id:
-                        await send_toast(
-                            toast_type="info",
-                            title=f"Direct message from {user_name}",
-                            message=content,
-                            target=MessageTarget.USER,
-                            target_id=target_id,
-                            data={"original_message": received_data, "sender": user_name}
-                        )
-                    elif target == MessageTarget.TEAM and target_id:
-                        await send_toast(
-                            toast_type="info",
-                            title=f"Team message from {user_name}",
-                            message=content,
-                            target=MessageTarget.TEAM,
-                            target_id=target_id,
-                            data={"original_message": received_data, "sender": user_name}
-                        )
-                    elif target == MessageTarget.DEPARTMENT and target_id:
-                        await send_toast(
-                            toast_type="info",
-                            title=f"Department message from {user_name}",
-                            message=content,
-                            target=MessageTarget.DEPARTMENT,
-                            target_id=target_id,
-                            data={"original_message": received_data, "sender": user_name}
-                        )
-                    elif target == MessageTarget.ROLE and target_id:
-                        await send_toast(
-                            toast_type="info",
-                            title=f"Role message from {user_name}",
-                            message=content,
-                            target=MessageTarget.ROLE,
-                            target_id=target_id,
-                            data={"original_message": received_data, "sender": user_name}
-                        )
+                    # Note: Removed chat/communication toast notifications to avoid spam
+                    # Messages are still received but no toast notifications are sent
+                    pass
                         
                 elif received_data.get("type") == "demo":
-                    # Handle demo toast requests
-                    target = MessageTarget(received_data.get("target", "all"))
-                    target_id = received_data.get("target_id")
-                    
-                    await send_toast(
-                        toast_type=received_data.get("toast_type", "info"),
-                        title=received_data.get("title", "Demo Toast"),
-                        message=received_data.get("message", "Demo notification"),
-                        target=target,
-                        target_id=target_id,
-                        data={"demo_data": received_data, "sender": user_name}
-                    )
+                    # Note: Removed demo toast notifications to avoid spam
+                    # Demo messages are still received but no toast notifications are sent
+                    pass
                     
                 elif received_data.get("type") == "get_users":
                     # Send list of connected users
@@ -348,35 +292,18 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
                     await websocket.send_text(json.dumps(response_data))
                     
                 else:
-                    # Forward structured data as toast
-                    await send_toast(
-                        toast_type="info",
-                        title="Data Received",
-                        message=str(received_data),
-                        target=MessageTarget.ALL,
-                        data=received_data
-                    )
+                    # Note: Removed generic data received toast notifications to avoid spam
+                    # Unknown structured data is still received but no toast notifications are sent
+                    pass
                     
             except json.JSONDecodeError:
-                # Plain text message - send as broadcast
-                await send_toast(
-                    toast_type="success",
-                    title=f"Message from {user_name}",
-                    message=data,
-                    target=MessageTarget.ALL,
-                    data={"message_type": "text", "sender": user_name}
-                )
+                # Note: Removed plain text message toast notifications to avoid spam
+                # Plain text messages are still received but no toast notifications are sent
+                pass
                 
     except WebSocketDisconnect:
         # Remove from active connections
         if connection_info.user_id in active_connections:
             del active_connections[connection_info.user_id]
             
-        # Broadcast toast notification to remaining users that someone disconnected
-        await send_toast(
-            toast_type="warning",
-            title="User Disconnected",
-            message=f"{user_name} has left the chat. Remaining users: {len(active_connections)}",
-            target=MessageTarget.ALL,
-            data={"connection_count": len(active_connections), "disconnected_user": user_name}
-        )
+        # Note: Removed user disconnect toast notification to avoid spam
