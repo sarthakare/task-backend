@@ -249,14 +249,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     }
     await websocket.send_text(json.dumps(welcome_data))
     
-    # Broadcast toast notification to all users that someone joined
-    await send_toast(
-        toast_type="info",
-        title="User Connected",
-        message=f"{user_name} has joined the chat. Total users: {len(active_connections)}",
-        target=MessageTarget.ALL,
-        data={"connection_count": len(active_connections), "new_user": user_name}
-    )
+    # Note: Removed user connection toast notification to avoid spam
     
     try:
         while True:
