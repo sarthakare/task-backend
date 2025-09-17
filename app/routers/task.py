@@ -11,6 +11,7 @@ from app.models import Task, TaskLog, User, Project, Team, TaskStatus as TaskSta
 from app.schemas import TaskCreate, TaskUpdate, TaskOut, TaskLogCreate, TaskLogOut
 from app.utils.auth import get_current_user
 from app.utils.hierarchy import HierarchyManager
+from app.utils.notifications import create_task_notification
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -320,6 +321,27 @@ def create_task(
         joinedload(Task.task_logs)
     ).filter(Task.id == db_task.id).first()
     
+    # Create database notification for the assigned user
+    try:
+        from app.models.notification import NotificationType, NotificationPriority
+        
+        # Create notification in database
+        create_task_notification(
+            db=db,
+            user_id=db_task.assigned_to,
+            task_title=db_task.title,
+            notification_type=NotificationType.TASK_ASSIGNED,
+            task_id=db_task.id,
+            priority=NotificationPriority.HIGH if db_task.priority == "CRITICAL" else 
+                    NotificationPriority.MEDIUM if db_task.priority == "HIGH" else 
+                    NotificationPriority.LOW,
+            additional_info=f"Assigned by {db_task.creator.name}"
+        )
+        print(f"Database notification created for user {db_task.assigned_to}")
+    except Exception as e:
+        print(f"Error creating database notification: {e}")
+        # Don't fail the main operation if notification fails
+
     # Send WebSocket notification to the assigned user
     try:
         # Create task data for notification
@@ -424,6 +446,39 @@ def update_task_status(
         joinedload(Task.task_logs)
     ).filter(Task.id == db_task.id).first()
     
+    # Create database notifications for status update
+    try:
+        from app.models.notification import NotificationType, NotificationPriority
+        
+        # Notify the task creator about status change
+        if db_task.created_by != current_user.id:
+            create_task_notification(
+                db=db,
+                user_id=db_task.created_by,
+                task_title=db_task.title,
+                notification_type=NotificationType.TASK_STATUS_CHANGED,
+                task_id=db_task.id,
+                priority=NotificationPriority.MEDIUM,
+                additional_info=f"Status changed to '{db_task.status}' by {current_user.name}"
+            )
+            print(f"Database status notification created for creator {db_task.created_by}")
+        
+        # Notify the assignee if they're not the one updating
+        if db_task.assigned_to != current_user.id:
+            create_task_notification(
+                db=db,
+                user_id=db_task.assigned_to,
+                task_title=db_task.title,
+                notification_type=NotificationType.TASK_STATUS_CHANGED,
+                task_id=db_task.id,
+                priority=NotificationPriority.MEDIUM,
+                additional_info=f"Status changed to '{db_task.status}' by {current_user.name}"
+            )
+            print(f"Database status notification created for assignee {db_task.assigned_to}")
+    except Exception as e:
+        print(f"Error creating database status notification: {e}")
+        # Don't fail the main operation if notification fails
+
     # Send WebSocket notification for status update
     try:
         task_data = {
@@ -552,6 +607,44 @@ def update_task(
         joinedload(Task.task_logs)
     ).filter(Task.id == db_task.id).first()
     
+    # Create database notifications for task update
+    try:
+        from app.models.notification import NotificationType, NotificationPriority
+        
+        # Check if assignment changed
+        assignment_changed = (task_update.assigned_to and 
+                            task_update.assigned_to != db_task.assigned_to)
+        
+        if assignment_changed:
+            # Create database notification for new assignee
+            create_task_notification(
+                db=db,
+                user_id=db_task.assigned_to,
+                task_title=db_task.title,
+                notification_type=NotificationType.TASK_ASSIGNED,
+                task_id=db_task.id,
+                priority=NotificationPriority.HIGH if db_task.priority == "CRITICAL" else 
+                        NotificationPriority.MEDIUM if db_task.priority == "HIGH" else 
+                        NotificationPriority.LOW,
+                additional_info=f"Reassigned by {current_user.name}"
+            )
+            print(f"Database reassignment notification created for user {db_task.assigned_to}")
+        else:
+            # Create database notification for task update
+            create_task_notification(
+                db=db,
+                user_id=db_task.assigned_to,
+                task_title=db_task.title,
+                notification_type=NotificationType.TASK_UPDATED,
+                task_id=db_task.id,
+                priority=NotificationPriority.MEDIUM,
+                additional_info=f"Updated by {current_user.name}"
+            )
+            print(f"Database update notification created for user {db_task.assigned_to}")
+    except Exception as e:
+        print(f"Error creating database notification: {e}")
+        # Don't fail the main operation if notification fails
+
     # Send WebSocket notification for task update
     try:
         task_data = {

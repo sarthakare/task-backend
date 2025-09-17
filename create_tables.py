@@ -6,6 +6,7 @@ from app.models.team import Team
 from app.models.project import Project
 from app.models.task import Task, TaskLog
 from app.models.reminder import Reminder
+from app.models.notification import Notification
 import os
 
 # Database URL - Use SQLite for local development if DATABASE_URL not set
@@ -19,6 +20,7 @@ def create_tables():
     try:
         # Drop existing tables if they exist (in correct order due to foreign keys)
         with engine.connect() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS notifications CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS reminders CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS task_logs CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS tasks CASCADE"))

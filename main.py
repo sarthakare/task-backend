@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from app.routers import auth, user, team, project, task, dashboard, reminder
+from app.routers import auth, user, team, project, task, dashboard, reminder, notification
 from app.utils.auth import get_current_user
 from app.models.user import User
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,6 +164,7 @@ app.include_router(project.router, prefix="/projects", tags=["Projects"])
 app.include_router(task.router, tags=["Tasks"])
 app.include_router(dashboard.router, tags=["Dashboard"])
 app.include_router(reminder.router, tags=["Reminders"])
+app.include_router(notification.router, tags=["Notifications"])
 
 # Root route
 @app.get("/")
