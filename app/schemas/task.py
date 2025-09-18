@@ -95,6 +95,31 @@ class TaskLogOut(BaseModel):
     class Config:
         from_attributes = True
 
+# Task Attachment Schemas
+class TaskAttachmentOut(BaseModel):
+    id: int
+    task_id: int
+    filename: str
+    original_filename: str
+    file_size: int
+    mime_type: str
+    uploaded_by: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class TaskAttachmentCreate(BaseModel):
+    filename: str
+    original_filename: str
+    file_path: str
+    file_size: int
+    mime_type: str
+
+class TaskAttachmentUpdate(BaseModel):
+    filename: Optional[str] = None
+    original_filename: Optional[str] = None
+
 class TaskOut(BaseModel):
     id: int
     title: str
@@ -118,6 +143,7 @@ class TaskOut(BaseModel):
     project: Optional[ProjectBasic] = None
     team: Optional[TeamBasic] = None
     logs: List[TaskLogOut] = []
+    attachments: List[TaskAttachmentOut] = []
 
     class Config:
         from_attributes = True
@@ -133,3 +159,4 @@ class TaskLogUpdate(BaseModel):
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+

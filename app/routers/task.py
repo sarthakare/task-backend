@@ -1,17 +1,20 @@
 # app/routers/task.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 from typing import List, Optional
 from datetime import datetime
 import asyncio
+import json
 
 from app.database import get_db
-from app.models import Task, TaskLog, User, Project, Team, TaskStatus as TaskStatusEnum
-from app.schemas import TaskCreate, TaskUpdate, TaskOut, TaskLogCreate, TaskLogOut
+from app.models import Task, TaskLog, User, Project, Team, TaskStatus as TaskStatusEnum, TaskAttachment
+from app.schemas import TaskCreate, TaskUpdate, TaskOut, TaskLogCreate, TaskLogOut, TaskAttachmentCreate, TaskAttachmentOut
 from app.utils.auth import get_current_user
 from app.utils.hierarchy import HierarchyManager
 from app.utils.notifications import create_task_notification
+from app.services.file_storage import file_storage
+from app.services.file_validation import file_validator
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -132,7 +135,8 @@ def get_all_tasks(
         joinedload(Task.assignee),
         joinedload(Task.project),
         joinedload(Task.team),
-        joinedload(Task.task_logs)
+        joinedload(Task.task_logs),
+        joinedload(Task.attachments)
     )
     
     # Apply role-based filtering
@@ -227,7 +231,8 @@ def get_task(
         joinedload(Task.assignee),
         joinedload(Task.project),
         joinedload(Task.team),
-        joinedload(Task.task_logs)
+        joinedload(Task.task_logs),
+        joinedload(Task.attachments)
     ).filter(Task.id == task_id).first()
     
     if not task:
@@ -246,142 +251,284 @@ def get_task(
     return task
 
 @router.post("/", response_model=TaskOut)
-def create_task(
-    task: TaskCreate,
+async def create_task(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new task with hierarchy-based assignment validation"""
+    """Create a new task with optional file attachments"""
     hierarchy_manager = HierarchyManager(db)
     
-    # Validate assignee exists and is active
-    assignee = db.query(User).filter(User.id == task.assigned_to, User.is_active == True).first()
-    if not assignee:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Assigned user not found or inactive"
-        )
-    
-    # Validate assignment is allowed based on hierarchy
-    if not hierarchy_manager.is_peer_or_subordinate(current_user.id, task.assigned_to):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only assign tasks to your subordinates or peers. Cannot assign tasks to superiors."
-        )
-    
-    # Validate project if provided
-    if task.project_id:
-        project = db.query(Project).filter(
-            Project.id == task.project_id,
-            Project.status.in_(["active"])
-        ).first()
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Project not found or not active"
-            )
-    
-    # Validate team if provided
-    if task.team_id:
-        team = db.query(Team).filter(
-            Team.id == task.team_id,
-            Team.status == "active"
-        ).first()
-        if not team:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Team not found or not active"
-            )
-    
-    # Create the task
-    db_task = Task(
-        title=task.title,
-        description=task.description,
-        created_by=current_user.id,
-        assigned_to=task.assigned_to,
-        project_id=task.project_id,
-        team_id=task.team_id,
-        status=task.status,
-        priority=task.priority,
-        start_date=task.start_date,
-        due_date=task.due_date,
-        follow_up_date=task.follow_up_date
-    )
-    
-    db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
-    
-    # Load relationships for response
-    db_task = db.query(Task).options(
-        joinedload(Task.creator),
-        joinedload(Task.assignee),
-        joinedload(Task.project),
-        joinedload(Task.team),
-        joinedload(Task.task_logs)
-    ).filter(Task.id == db_task.id).first()
-    
-    # Create database notification for the assigned user
     try:
-        from app.models.notification import NotificationType, NotificationPriority
+        # Check content type to determine if it's multipart form data or JSON
+        content_type = request.headers.get("content-type", "")
         
-        # Create notification in database
-        create_task_notification(
-            db=db,
-            user_id=db_task.assigned_to,
-            task_title=db_task.title,
-            notification_type=NotificationType.TASK_ASSIGNED,
-            task_id=db_task.id,
-            priority=NotificationPriority.HIGH if db_task.priority == "CRITICAL" else 
-                    NotificationPriority.MEDIUM if db_task.priority == "HIGH" else 
-                    NotificationPriority.LOW,
-            additional_info=f"Assigned by {db_task.creator.name}"
+        if "multipart/form-data" in content_type:
+            # Handle multipart form data (with optional files)
+            form = await request.form()
+            
+            # Extract task data from form
+            title = form.get("title")
+            description = form.get("description")
+            assigned_to = form.get("assigned_to")
+            task_status = form.get("status", "NEW")
+            priority = form.get("priority", "MEDIUM")
+            start_date = form.get("start_date")
+            due_date = form.get("due_date")
+            follow_up_date = form.get("follow_up_date")
+            project_id = form.get("project_id")
+            team_id = form.get("team_id")
+            files = form.getlist("files")
+            
+            # Validate required fields
+            if not all([title, description, assigned_to, start_date, due_date, follow_up_date]):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Missing required fields: title, description, assigned_to, start_date, due_date, follow_up_date"
+                )
+            
+            # Parse and validate data
+            try:
+                assigned_to = int(assigned_to)
+                project_id = int(project_id) if project_id else None
+                team_id = int(team_id) if team_id else None
+                start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                due_date_obj = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                follow_up_date_obj = datetime.fromisoformat(follow_up_date.replace('Z', '+00:00'))
+            except (ValueError, TypeError) as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid data format: {str(e)}"
+                )
+            
+        else:
+            # Handle JSON data (no files)
+            try:
+                task_data = await request.json()
+                title = task_data.get("title")
+                description = task_data.get("description")
+                assigned_to = task_data.get("assigned_to")
+                task_status = task_data.get("status", "NEW")
+                priority = task_data.get("priority", "MEDIUM")
+                start_date = task_data.get("start_date")
+                due_date = task_data.get("due_date")
+                follow_up_date = task_data.get("follow_up_date")
+                project_id = task_data.get("project_id")
+                team_id = task_data.get("team_id")
+                files = []
+                
+                # Validate required fields
+                if not all([title, description, assigned_to, start_date, due_date, follow_up_date]):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Missing required fields: title, description, assigned_to, start_date, due_date, follow_up_date"
+                    )
+                
+                # Parse dates
+                start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                due_date_obj = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                follow_up_date_obj = datetime.fromisoformat(follow_up_date.replace('Z', '+00:00'))
+                
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid JSON data: {str(e)}"
+                )
+        
+        # Validate assignee exists and is active
+        assignee = db.query(User).filter(User.id == assigned_to, User.is_active == True).first()
+        if not assignee:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Assigned user not found or inactive"
+            )
+        
+        # Validate assignment is allowed based on hierarchy
+        if not hierarchy_manager.is_peer_or_subordinate(current_user.id, assigned_to):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only assign tasks to your subordinates or peers. Cannot assign tasks to superiors."
+            )
+        
+        # Validate project if provided
+        if project_id:
+            project = db.query(Project).filter(
+                Project.id == project_id,
+                Project.status.in_(["active"])
+            ).first()
+            if not project:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Project not found or not active"
+                )
+        
+        # Validate team if provided
+        if team_id:
+            team = db.query(Team).filter(
+                Team.id == team_id,
+                Team.status == "active"
+            ).first()
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Team not found or not active"
+                )
+        
+        # Create the task
+        db_task = Task(
+            title=title,
+            description=description,
+            created_by=current_user.id,
+            assigned_to=assigned_to,
+            project_id=project_id,
+            team_id=team_id,
+            status=TaskStatusEnum(task_status),
+            priority=priority,
+            start_date=start_date_obj,
+            due_date=due_date_obj,
+            follow_up_date=follow_up_date_obj
         )
-        print(f"Database notification created for user {db_task.assigned_to}")
-    except Exception as e:
-        print(f"Error creating database notification: {e}")
-        # Don't fail the main operation if notification fails
+        
+        db.add(db_task)
+        db.commit()
+        db.refresh(db_task)
+        
+        # Process file uploads if any (only for multipart form data)
+        uploaded_attachments = []
+        if files and "multipart/form-data" in content_type:
+            for file in files:
+                if hasattr(file, 'filename') and file.filename:  # Skip empty files
+                    try:
+                        # Save file to disk
+                        file_path, filename, file_size = file_storage.save_file(file, db_task.id, current_user.id)
+                        
+                        # Get MIME type
+                        import mimetypes
+                        mime_type, _ = mimetypes.guess_type(file.filename)
+                        mime_type = mime_type or "application/octet-stream"
+                        
+                        # Comprehensive file validation
+                        is_valid, errors = file_validator.comprehensive_validation(file_path, mime_type)
+                        if not is_valid:
+                            # Delete the file if validation fails
+                            file_storage.delete_file(file_path)
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"File validation failed for {file.filename}: {'; '.join(errors)}"
+                            )
+                        
+                        # Create attachment record
+                        attachment = TaskAttachment(
+                            task_id=db_task.id,
+                            filename=filename,
+                            original_filename=file.filename,
+                            file_path=file_path,
+                            file_size=file_size,
+                            mime_type=mime_type,
+                            uploaded_by=current_user.id
+                        )
+                        
+                        db.add(attachment)
+                        uploaded_attachments.append(attachment)
+                        
+                    except HTTPException:
+                        raise
+                    except Exception as e:
+                        # Clean up any partially uploaded files
+                        if 'file_path' in locals():
+                            file_storage.delete_file(file_path)
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Error processing file {file.filename}: {str(e)}"
+                        )
+        
+        # Commit attachment records
+        if uploaded_attachments:
+            db.commit()
+        
+        # Load relationships for response
+        db_task = db.query(Task).options(
+            joinedload(Task.creator),
+            joinedload(Task.assignee),
+            joinedload(Task.project),
+            joinedload(Task.team),
+            joinedload(Task.task_logs),
+            joinedload(Task.attachments)
+        ).filter(Task.id == db_task.id).first()
+        
+        # Create database notification for the assigned user
+        try:
+            from app.models.notification import NotificationType, NotificationPriority
+            
+            # Create notification in database
+            create_task_notification(
+                db=db,
+                user_id=db_task.assigned_to,
+                task_title=db_task.title,
+                notification_type=NotificationType.TASK_ASSIGNED,
+                task_id=db_task.id,
+                priority=NotificationPriority.HIGH if db_task.priority == "CRITICAL" else 
+                        NotificationPriority.MEDIUM if db_task.priority == "HIGH" else 
+                        NotificationPriority.LOW,
+                additional_info=f"Assigned by {db_task.creator.name}"
+            )
+            print(f"Database notification created for user {db_task.assigned_to}")
+        except Exception as e:
+            print(f"Error creating database notification: {e}")
+            # Don't fail the main operation if notification fails
 
-    # Send WebSocket notification to the assigned user
-    try:
-        # Create task data for notification
-        task_data = {
-            "task_id": db_task.id,
-            "title": db_task.title,
-            "description": db_task.description,
-            "priority": db_task.priority,
-            "status": db_task.status,
-            "due_date": db_task.due_date,
-            "project_name": db_task.project.name if db_task.project else None,
-            "team_name": db_task.team.name if db_task.team else None,
-            "creator_name": db_task.creator.name,
-            "assignee_name": db_task.assignee.name
-        }
-        
-        # Send notification to assigned user
-        send_notification_async(
-            notification_type="task_assigned",
-            title="New Task Assigned",
-            message=f"You have been assigned a new task: '{db_task.title}' by {db_task.creator.name}",
-            target_user_id=db_task.assigned_to,
-            task_data=task_data
-        )
-        
-        # Also send a general notification to team/department if applicable
-        if db_task.team:
+        # Send WebSocket notification to the assigned user
+        try:
+            # Create task data for notification
+            task_data = {
+                "task_id": db_task.id,
+                "title": db_task.title,
+                "description": db_task.description,
+                "priority": db_task.priority,
+                "status": db_task.status,
+                "due_date": db_task.due_date,
+                "project_name": db_task.project.name if db_task.project else None,
+                "team_name": db_task.team.name if db_task.team else None,
+                "creator_name": db_task.creator.name,
+                "assignee_name": db_task.assignee.name,
+                "attachments_count": len(db_task.attachments)
+            }
+            
+            # Send notification to assigned user
             send_notification_async(
-                notification_type="team_task_created",
-                title="New Team Task",
-                message=f"New task '{db_task.title}' has been created for team {db_task.team.name}",
-                target_user_id=None,  # Broadcast to team
+                notification_type="task_assigned",
+                title="New Task Assigned",
+                message=f"You have been assigned a new task: '{db_task.title}' by {db_task.creator.name}",
+                target_user_id=db_task.assigned_to,
                 task_data=task_data
             )
             
+            # Also send a general notification to team/department if applicable
+            if db_task.team:
+                send_notification_async(
+                    notification_type="team_task_created",
+                    title="New Team Task",
+                    message=f"New task '{db_task.title}' has been created for team {db_task.team.name}",
+                    target_user_id=None,  # Broadcast to team
+                    task_data=task_data
+                )
+                
+        except Exception as e:
+            print(f"Error sending task assignment notification: {e}")
+            # Don't fail the main operation if notification fails
+        
+        return db_task
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error sending task assignment notification: {e}")
-        # Don't fail the main operation if notification fails
-    
-    return db_task
+        # Clean up the task if file processing fails
+        if 'db_task' in locals():
+            db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating task: {str(e)}"
+        )
 
 @router.put("/{task_id}/status", response_model=TaskOut)
 def update_task_status(
@@ -443,7 +590,8 @@ def update_task_status(
         joinedload(Task.assignee),
         joinedload(Task.project),
         joinedload(Task.team),
-        joinedload(Task.task_logs)
+        joinedload(Task.task_logs),
+        joinedload(Task.attachments)
     ).filter(Task.id == db_task.id).first()
     
     # Create database notifications for status update
@@ -604,7 +752,8 @@ def update_task(
         joinedload(Task.assignee),
         joinedload(Task.project),
         joinedload(Task.team),
-        joinedload(Task.task_logs)
+        joinedload(Task.task_logs),
+        joinedload(Task.attachments)
     ).filter(Task.id == db_task.id).first()
     
     # Create database notifications for task update
@@ -833,3 +982,215 @@ def get_my_team_tasks(
     ).offset(skip).limit(limit).all()
     
     return tasks
+
+# File Attachment Endpoints
+@router.get("/{task_id}/attachments", response_model=List[TaskAttachmentOut])
+def get_task_attachments(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all attachments for a specific task"""
+    hierarchy_manager = HierarchyManager(db)
+    
+    # Get the task
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Check if user can view this task
+    if not hierarchy_manager.can_view_task_by_role(current_user.id, task.created_by, task.assigned_to):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this task's attachments"
+        )
+    
+    # Get attachments
+    attachments = db.query(TaskAttachment).filter(TaskAttachment.task_id == task_id).all()
+    return attachments
+
+@router.get("/attachments/{attachment_id}/download")
+def download_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Download a specific attachment"""
+    hierarchy_manager = HierarchyManager(db)
+    
+    # Get the attachment
+    attachment = db.query(TaskAttachment).filter(TaskAttachment.id == attachment_id).first()
+    if not attachment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attachment not found"
+        )
+    
+    # Get the task
+    task = db.query(Task).filter(Task.id == attachment.task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Check if user can view this task
+    if not hierarchy_manager.can_view_task_by_role(current_user.id, task.created_by, task.assigned_to):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to download this attachment"
+        )
+    
+    # Check if file exists
+    file_path = file_storage.get_file_path(attachment.task_id, attachment.filename)
+    if not file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk"
+        )
+    
+    # Return file for download
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=file_path,
+        filename=attachment.original_filename,
+        media_type=attachment.mime_type
+    )
+
+@router.post("/{task_id}/attachments", response_model=TaskAttachmentOut)
+async def upload_attachment_to_task(
+    task_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload a new attachment to an existing task"""
+    hierarchy_manager = HierarchyManager(db)
+    
+    # Get the task
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Check if user can edit this task
+    can_edit = (
+        current_user.id == task.created_by or  # Task creator
+        current_user.id == task.assigned_to or  # Task assignee
+        current_user.role in ["ADMIN", "SUPERVISOR"] or  # Admin/Supervisor
+        hierarchy_manager.is_supervisor_of(current_user.id, task.assigned_to)  # Supervisor of assignee
+    )
+    
+    if not can_edit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to add attachments to this task"
+        )
+    
+    try:
+        # Save file to disk
+        file_path, filename, file_size = file_storage.save_file(file, task_id, current_user.id)
+        
+        # Get MIME type
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(file.filename)
+        mime_type = mime_type or "application/octet-stream"
+        
+        # Comprehensive file validation
+        is_valid, errors = file_validator.comprehensive_validation(file_path, mime_type)
+        if not is_valid:
+            # Delete the file if validation fails
+            file_storage.delete_file(file_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File validation failed for {file.filename}: {'; '.join(errors)}"
+            )
+        
+        # Create attachment record
+        attachment = TaskAttachment(
+            task_id=task_id,
+            filename=filename,
+            original_filename=file.filename,
+            file_path=file_path,
+            file_size=file_size,
+            mime_type=mime_type,
+            uploaded_by=current_user.id
+        )
+        
+        db.add(attachment)
+        db.commit()
+        db.refresh(attachment)
+        
+        return attachment
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Clean up any partially uploaded files
+        if 'file_path' in locals():
+            file_storage.delete_file(file_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading file: {str(e)}"
+        )
+
+@router.delete("/attachments/{attachment_id}")
+def delete_attachment(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a specific attachment"""
+    hierarchy_manager = HierarchyManager(db)
+    
+    # Get the attachment
+    attachment = db.query(TaskAttachment).filter(TaskAttachment.id == attachment_id).first()
+    if not attachment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attachment not found"
+        )
+    
+    # Get the task
+    task = db.query(Task).filter(Task.id == attachment.task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Check if user can edit this task
+    can_edit = (
+        current_user.id == task.created_by or  # Task creator
+        current_user.id == task.assigned_to or  # Task assignee
+        current_user.id == attachment.uploaded_by or  # File uploader
+        current_user.role in ["ADMIN", "SUPERVISOR"] or  # Admin/Supervisor
+        hierarchy_manager.is_supervisor_of(current_user.id, task.assigned_to)  # Supervisor of assignee
+    )
+    
+    if not can_edit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this attachment"
+        )
+    
+    try:
+        # Delete file from disk
+        file_storage.delete_file(attachment.file_path)
+        
+        # Delete attachment record
+        db.delete(attachment)
+        db.commit()
+        
+        return {"message": "Attachment deleted successfully"}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting attachment: {str(e)}"
+        )

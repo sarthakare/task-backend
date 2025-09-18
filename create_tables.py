@@ -4,7 +4,7 @@ from app.database import Base
 from app.models.user import User
 from app.models.team import Team
 from app.models.project import Project
-from app.models.task import Task, TaskLog
+from app.models.task import Task, TaskLog, TaskAttachment
 from app.models.reminder import Reminder
 from app.models.notification import Notification
 import os
@@ -22,6 +22,7 @@ def create_tables():
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS notifications CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS reminders CASCADE"))
+            conn.execute(text("DROP TABLE IF EXISTS task_attachments CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS task_logs CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS tasks CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS project_teams CASCADE"))

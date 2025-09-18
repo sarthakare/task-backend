@@ -53,6 +53,7 @@ class Task(Base):
     team = relationship("Team", back_populates="tasks")
     task_logs = relationship("TaskLog", back_populates="task", cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="task")
+    attachments = relationship("TaskAttachment", back_populates="task", cascade="all, delete-orphan")
 
 class TaskLog(Base):
     __tablename__ = "task_logs"
@@ -67,3 +68,20 @@ class TaskLog(Base):
     
     # Relationships
     task = relationship("Task", back_populates="task_logs")
+
+class TaskAttachment(Base):
+    __tablename__ = "task_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    filename = Column(String(255), nullable=False)  # Stored filename (with UUID)
+    original_filename = Column(String(255), nullable=False)  # Original filename
+    file_path = Column(String(500), nullable=False)  # Full path to file
+    file_size = Column(Integer, nullable=False)  # File size in bytes
+    mime_type = Column(String(100), nullable=False)  # MIME type
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    task = relationship("Task", back_populates="attachments")
+    uploader = relationship("User", foreign_keys=[uploaded_by])
