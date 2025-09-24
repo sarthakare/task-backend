@@ -3,6 +3,7 @@ from app.routers import auth, user, team, project, task, dashboard, reminder, no
 from app.utils.auth import get_current_user
 from app.models.user import User
 from fastapi.middleware.cors import CORSMiddleware
+from app.services.scheduler import task_scheduler
 import asyncio
 import json
 from datetime import datetime
@@ -166,6 +167,21 @@ app.include_router(dashboard.router, tags=["Dashboard"])
 app.include_router(reminder.router, tags=["Reminders"])
 app.include_router(notification.router, tags=["Notifications"])
 
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    """Start the task scheduler when the application starts"""
+    print("Starting Task Manager API...")
+    task_scheduler.start()
+    print("Task scheduler started successfully")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop the task scheduler when the application shuts down"""
+    print("Shutting down Task Manager API...")
+    task_scheduler.stop()
+    print("Task scheduler stopped")
+
 # Root route
 @app.get("/")
 def read_root():
@@ -174,6 +190,29 @@ def read_root():
 @app.get("/health")
 def health():
   return {"status": "ok"}
+
+@app.get("/scheduler/status")
+async def get_scheduler_status():
+    """Get scheduler status and job information"""
+    return await task_scheduler.get_scheduler_status()
+
+@app.post("/scheduler/trigger/due-today")
+async def trigger_due_today_check():
+    """Manually trigger the due today task check"""
+    try:
+        await task_scheduler.check_tasks_due_today()
+        return {"message": "Due today check triggered successfully"}
+    except Exception as e:
+        return {"error": f"Failed to trigger due today check: {str(e)}"}
+
+@app.post("/scheduler/trigger/overdue")
+async def trigger_overdue_check():
+    """Manually trigger the overdue task check"""
+    try:
+        await task_scheduler.check_overdue_tasks()
+        return {"message": "Overdue check triggered successfully"}
+    except Exception as e:
+        return {"error": f"Failed to trigger overdue check: {str(e)}"}
 
 # WebSocket endpoint for real-time communication with authentication
 @app.websocket("/ws")
