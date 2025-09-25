@@ -90,6 +90,7 @@ class TaskLogOut(BaseModel):
     description: str
     start_time: datetime
     end_time: Optional[datetime] = None
+    percentage: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -153,10 +154,12 @@ class TaskLogCreate(BaseModel):
     description: str
     start_time: datetime
     end_time: Optional[datetime] = None
+    percentage: Optional[int] = None
 
 class TaskLogUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    percentage: Optional[int] = None
 

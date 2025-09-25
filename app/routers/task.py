@@ -898,12 +898,14 @@ def create_task_log(
         )
     
     # Create log entry
+    print(f"Creating task log with percentage: {log.percentage}")  # Debug log
     db_log = TaskLog(
         task_id=task_id,
         title=log.title,
         description=log.description,
         start_time=log.start_time,
-        end_time=log.end_time
+        end_time=log.end_time,
+        percentage=log.percentage
     )
     
     db.add(db_log)

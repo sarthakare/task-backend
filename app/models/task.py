@@ -64,6 +64,7 @@ class TaskLog(Base):
     description = Column(Text, nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=True)
+    percentage = Column(Integer, nullable=True)  # Percentage of work completed (0-100)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Relationships

@@ -34,7 +34,7 @@ class TaskScheduler:
             # Schedule task due today check every 30 minutes
             self.scheduler.add_job(
                 self.check_tasks_due_today,
-                trigger=IntervalTrigger(minutes=30),
+                trigger=IntervalTrigger(minutes=2),
                 id='check_tasks_due_today',
                 name='Check Tasks Due Today',
                 replace_existing=True
