@@ -10,6 +10,7 @@ from app.models.team import Team
 from app.models.user import User
 from app.schemas.team import TeamCreate, TeamUpdate, TeamOut, TeamMemberAdd
 from app.utils.auth import get_current_user
+from app.utils.hierarchy import HierarchyManager
 
 router = APIRouter()
 
@@ -95,9 +96,53 @@ def send_team_notification_async(
     thread.start()
 
 @router.get("/", response_model=List[TeamOut])
-def get_all_teams(db: Session = Depends(get_db)):
-    """Get all teams with their leaders and members"""
-    teams = db.query(Team).all()
+def get_all_teams(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get teams based on user's role and hierarchy scope"""
+    
+    hierarchy_manager = HierarchyManager(db)
+    user_role = current_user.role.upper()
+    
+    if user_role in ['ADMIN', 'CEO']:
+        # Admin and CEO see all teams
+        teams = db.query(Team).all()
+    else:
+        # Other roles see only their relevant teams
+        user_teams = []
+        
+        # Get teams where user is the leader
+        teams_leading = db.query(Team).filter(Team.leader_id == current_user.id).all()
+        user_teams.extend(teams_leading)
+        
+        # Get teams where user is a member
+        teams_member = db.query(Team).join(Team.members).filter(
+            Team.members.any(User.id == current_user.id)
+        ).all()
+        user_teams.extend(teams_member)
+        
+        # For managers, also include teams of their subordinates
+        if user_role == 'MANAGER':
+            subordinates = hierarchy_manager.get_all_subordinates(current_user.id)
+            for subordinate in subordinates:
+                # Teams led by subordinates
+                subordinate_teams = db.query(Team).filter(Team.leader_id == subordinate.id).all()
+                user_teams.extend(subordinate_teams)
+                
+                # Teams where subordinates are members
+                subordinate_member_teams = db.query(Team).join(Team.members).filter(
+                    Team.members.any(User.id == subordinate.id)
+                ).all()
+                user_teams.extend(subordinate_member_teams)
+        
+        # Remove duplicates and return
+        unique_teams = list(set([team.id for team in user_teams]))
+        if unique_teams:
+            teams = db.query(Team).filter(Team.id.in_(unique_teams)).all()
+        else:
+            teams = []
+    
     return teams
 
 @router.get("/{team_id}", response_model=TeamOut)

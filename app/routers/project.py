@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.team import Team
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectOut, ProjectTeamAdd
 from app.utils.auth import get_current_user
+from app.utils.hierarchy import HierarchyManager
 
 router = APIRouter()
 
@@ -96,9 +97,51 @@ def send_project_notification_async(
     thread.start()
 
 @router.get("/", response_model=List[ProjectOut])
-def get_all_projects(db: Session = Depends(get_db)):
-    """Get all projects with their managers and assigned teams"""
-    projects = db.query(Project).all()
+def get_all_projects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get projects based on user's role and hierarchy scope"""
+    
+    hierarchy_manager = HierarchyManager(db)
+    user_role = current_user.role.upper()
+    
+    if user_role in ['ADMIN', 'CEO']:
+        # Admin and CEO see all projects
+        projects = db.query(Project).all()
+    else:
+        # Other roles see only their assigned projects
+        # Get projects where user is the manager
+        user_managed_projects = db.query(Project).filter(Project.manager_id == current_user.id)
+        
+        # Get projects where user's teams are assigned
+        user_teams = db.query(Team).filter(Team.leader_id == current_user.id).all()
+        team_member_projects = []
+        for team in user_teams:
+            team_projects = db.query(Project).join(Project.assigned_teams).filter(
+                Project.assigned_teams.any(Team.id == team.id)
+            ).all()
+            team_member_projects.extend(team_projects)
+        
+        # Get projects where user is a team member
+        user_team_memberships = db.query(Team).join(Team.members).filter(
+            Team.members.any(User.id == current_user.id)
+        ).all()
+        for team in user_team_memberships:
+            member_projects = db.query(Project).join(Project.assigned_teams).filter(
+                Project.assigned_teams.any(Team.id == team.id)
+            ).all()
+            team_member_projects.extend(member_projects)
+        
+        # Combine all relevant projects
+        all_user_projects = list(user_managed_projects) + team_member_projects
+        unique_project_ids = list(set([p.id for p in all_user_projects]))
+        
+        if unique_project_ids:
+            projects = db.query(Project).filter(Project.id.in_(unique_project_ids)).all()
+        else:
+            projects = []
+    
     return projects
 
 @router.get("/{project_id}", response_model=ProjectOut)
