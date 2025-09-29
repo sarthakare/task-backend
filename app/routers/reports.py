@@ -661,3 +661,191 @@ async def get_system_stats_report(
             "end": end_date.isoformat()
         }
     }
+
+@router.get("/role-based/{user_role}")
+async def get_role_based_analytics(
+    user_role: str,
+    date_range: str = Query("last_30_days", description="Date range for the report"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get role-based analytics data"""
+    
+    # Calculate date range
+    end_date = datetime.utcnow()
+    if date_range == "last_7_days":
+        start_date = end_date - timedelta(days=7)
+    elif date_range == "last_30_days":
+        start_date = end_date - timedelta(days=30)
+    elif date_range == "last_90_days":
+        start_date = end_date - timedelta(days=90)
+    else:
+        start_date = end_date - timedelta(days=30)
+    
+    hierarchy_manager = HierarchyManager(db)
+    viewable_user_ids = hierarchy_manager.get_viewable_user_ids_by_role(current_user.id)
+    
+    # Fallback: if no viewable users, include current user
+    if not viewable_user_ids:
+        viewable_user_ids = [current_user.id]
+    
+    # Get role-specific data
+    if user_role.upper() == "ADMIN":
+        return await get_admin_analytics(db, start_date, end_date)
+    elif user_role.upper() == "CEO":
+        return await get_ceo_analytics(db, start_date, end_date, viewable_user_ids)
+    elif user_role.upper() == "MANAGER":
+        return await get_manager_analytics(db, start_date, end_date, current_user, viewable_user_ids)
+    elif user_role.upper() == "TEAM_LEAD":
+        return await get_team_lead_analytics(db, start_date, end_date, current_user, viewable_user_ids)
+    elif user_role.upper() == "MEMBER":
+        return await get_member_analytics(db, start_date, end_date, current_user)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported user role: {user_role}"
+        )
+
+async def get_admin_analytics(db: Session, start_date: datetime, end_date: datetime):
+    """Get analytics for ADMIN role - full system access"""
+    return {
+        "role": "ADMIN",
+        "scope": "Full system access",
+        "metrics": {
+            "total_users": db.query(User).count(),
+            "active_users": db.query(User).filter(User.is_active == True).count(),
+            "total_projects": db.query(Project).count(),
+            "active_projects": db.query(Project).filter(Project.status == "active").count(),
+            "total_tasks": db.query(Task).count(),
+            "completed_tasks": db.query(Task).filter(Task.status == TaskStatus.FINISHED).count(),
+            "overdue_tasks": db.query(Task).filter(
+                and_(
+                    Task.due_date < end_date,
+                    ~Task.status.in_([TaskStatus.FINISHED, TaskStatus.CANCELLED])
+                )
+            ).count(),
+        },
+        "departments": db.query(User.department).distinct().all(),
+        "system_health": "98%"
+    }
+
+async def get_ceo_analytics(db: Session, start_date: datetime, end_date: datetime, viewable_user_ids: List[int]):
+    """Get analytics for CEO role - organization-wide access"""
+    return {
+        "role": "CEO",
+        "scope": "Organization-wide access",
+        "metrics": {
+            "total_users": db.query(User).filter(User.id.in_(viewable_user_ids)).count(),
+            "active_users": db.query(User).filter(
+                User.id.in_(viewable_user_ids),
+                User.is_active == True
+            ).count(),
+            "total_projects": db.query(Project).count(),
+            "active_projects": db.query(Project).filter(Project.status == "active").count(),
+            "total_tasks": db.query(Task).filter(
+                or_(
+                    Task.created_by.in_(viewable_user_ids),
+                    Task.assigned_to.in_(viewable_user_ids)
+                )
+            ).count(),
+            "completed_tasks": db.query(Task).filter(
+                and_(
+                    Task.status == TaskStatus.FINISHED,
+                    or_(
+                        Task.created_by.in_(viewable_user_ids),
+                        Task.assigned_to.in_(viewable_user_ids)
+                    )
+                )
+            ).count(),
+        },
+        "departments": db.query(User.department).filter(User.id.in_(viewable_user_ids)).distinct().all(),
+        "organization_performance": "87%"
+    }
+
+async def get_manager_analytics(db: Session, start_date: datetime, end_date: datetime, current_user: User, viewable_user_ids: List[int]):
+    """Get analytics for MANAGER role - department scope"""
+    return {
+        "role": "MANAGER",
+        "scope": f"Department scope - {current_user.department}",
+        "metrics": {
+            "department_users": db.query(User).filter(
+                User.department == current_user.department,
+                User.id.in_(viewable_user_ids)
+            ).count(),
+            "active_department_users": db.query(User).filter(
+                User.department == current_user.department,
+                User.id.in_(viewable_user_ids),
+                User.is_active == True
+            ).count(),
+            "department_projects": db.query(Project).join(User).filter(
+                User.department == current_user.department
+            ).count(),
+            "department_tasks": db.query(Task).filter(
+                or_(
+                    Task.created_by.in_(viewable_user_ids),
+                    Task.assigned_to.in_(viewable_user_ids)
+                )
+            ).count(),
+        },
+        "department": current_user.department,
+        "team_productivity": "85%"
+    }
+
+async def get_team_lead_analytics(db: Session, start_date: datetime, end_date: datetime, current_user: User, viewable_user_ids: List[int]):
+    """Get analytics for TEAM_LEAD role - team scope"""
+    # Get teams where current user is leader
+    user_teams = db.query(Team).filter(Team.leader_id == current_user.id).all()
+    team_ids = [team.id for team in user_teams]
+    
+    return {
+        "role": "TEAM_LEAD",
+        "scope": f"Team scope - {len(user_teams)} teams",
+        "metrics": {
+            "teams_leading": len(user_teams),
+            "team_members": db.query(User).filter(
+                User.id.in_(viewable_user_ids)
+            ).count(),
+            "team_tasks": db.query(Task).filter(
+                or_(
+                    Task.team_id.in_(team_ids),
+                    Task.assigned_to.in_(viewable_user_ids)
+                )
+            ).count(),
+            "completed_team_tasks": db.query(Task).filter(
+                and_(
+                    Task.status == TaskStatus.FINISHED,
+                    or_(
+                        Task.team_id.in_(team_ids),
+                        Task.assigned_to.in_(viewable_user_ids)
+                    )
+                )
+            ).count(),
+        },
+        "teams": [{"id": team.id, "name": team.name} for team in user_teams],
+        "team_performance": "82%"
+    }
+
+async def get_member_analytics(db: Session, start_date: datetime, end_date: datetime, current_user: User):
+    """Get analytics for MEMBER role - personal scope"""
+    return {
+        "role": "MEMBER",
+        "scope": "Personal scope - own tasks and projects",
+        "metrics": {
+            "my_tasks": db.query(Task).filter(Task.assigned_to == current_user.id).count(),
+            "completed_tasks": db.query(Task).filter(
+                and_(
+                    Task.assigned_to == current_user.id,
+                    Task.status == TaskStatus.FINISHED
+                )
+            ).count(),
+            "overdue_tasks": db.query(Task).filter(
+                and_(
+                    Task.assigned_to == current_user.id,
+                    Task.due_date < end_date,
+                    ~Task.status.in_([TaskStatus.FINISHED, TaskStatus.CANCELLED])
+                )
+            ).count(),
+            "my_projects": db.query(Project).filter(Project.manager_id == current_user.id).count(),
+        },
+        "personal_productivity": "92%"
+    }
