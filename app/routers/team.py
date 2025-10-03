@@ -105,8 +105,8 @@ def get_all_teams(
     hierarchy_manager = HierarchyManager(db)
     user_role = current_user.role.upper()
     
-    if user_role in ['ADMIN', 'CEO']:
-        # Admin and CEO see all teams
+    if user_role in ['ADMIN', 'CEO', 'MANAGER']:
+        # Admin, CEO, and managers see all teams
         teams = db.query(Team).all()
     else:
         # Other roles see only their relevant teams
@@ -155,13 +155,13 @@ def get_team(team_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=TeamOut, status_code=status.HTTP_201_CREATED)
 def create_team(team_data: TeamCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Create a new team - Only admin and CEO can create teams"""
+    """Create a new team - Only admin, CEO, and managers can create teams"""
     
     # Check if user has permission to create teams
-    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+    if current_user.role.upper() not in ["ADMIN", "CEO", "MANAGER"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin and CEO users can create teams"
+            detail="Only admin, CEO, and manager users can create teams"
         )
     
     # Check if team name already exists

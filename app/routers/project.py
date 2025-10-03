@@ -106,8 +106,8 @@ def get_all_projects(
     hierarchy_manager = HierarchyManager(db)
     user_role = current_user.role.upper()
     
-    if user_role in ['ADMIN', 'CEO']:
-        # Admin and CEO see all projects
+    if user_role in ['ADMIN', 'CEO', 'MANAGER']:
+        # Admin, CEO, and managers see all projects
         projects = db.query(Project).all()
     else:
         # Other roles see only their assigned projects
@@ -154,13 +154,13 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(project_data: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Create a new project - Only admin and CEO can create projects"""
+    """Create a new project - Only admin, CEO, and managers can create projects"""
     
     # Check if user has permission to create projects
-    if current_user.role.upper() not in ["ADMIN", "CEO"]:
+    if current_user.role.upper() not in ["ADMIN", "CEO", "MANAGER"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin and CEO users can create projects"
+            detail="Only admin, CEO, and manager users can create projects"
         )
     
     # Check if project name already exists
