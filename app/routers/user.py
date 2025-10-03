@@ -17,69 +17,35 @@ def get_all_users(
     db: Session = Depends(get_db),
     current_user: user_model.User = Depends(get_current_user)
 ):
-    """Get users based on hierarchy - Admin sees all, others see from CEO down"""
-    hierarchy_manager = HierarchyManager(db)
+    """Get all users - Same list for everyone (excluding admin users from non-admin users)"""
     
+    # Show all users except admin users to non-admin users
     if current_user.role == "ADMIN":
         # Admin can see all users including other admins (both active and inactive)
         return db.query(user_model.User).all()
     else:
-        # Non-admin users see hierarchy from their level and below
-        # First, try to get CEO as the top of non-admin hierarchy
-        ceo_user = db.query(user_model.User).filter(
-            user_model.User.role == "CEO",
-            user_model.User.is_active == True
-        ).first()
-        
-        if ceo_user:
-            # If CEO exists, show CEO and all subordinates (both active and inactive)
-            ceo_subordinates = hierarchy_manager.get_all_subordinates(ceo_user.id)
-            subordinate_ids = [sub.id for sub in ceo_subordinates]
-            subordinate_ids.append(ceo_user.id)  # Include CEO
-            
-            return db.query(user_model.User).filter(
-                user_model.User.id.in_(subordinate_ids)
-            ).all()
-        else:
-            # If no CEO exists, show all non-admin users (both active and inactive)
-            return db.query(user_model.User).filter(
-                user_model.User.role != "ADMIN"
-            ).all()
+        # Non-admin users see all users except admin users (both active and inactive)
+        return db.query(user_model.User).filter(
+            user_model.User.role != "ADMIN"
+        ).all()
 
 @router.get("/active", response_model=List[UserBasic])
 def get_active_users(
     db: Session = Depends(get_db),
     current_user: user_model.User = Depends(get_current_user)
 ):
-    """Get active users based on hierarchy - Admin sees all, others see from CEO down"""
-    hierarchy_manager = HierarchyManager(db)
+    """Get active users - Same list for everyone (excluding admin users from non-admin users)"""
     
+    # Show all active users except admin users to non-admin users
     if current_user.role == "ADMIN":
         # Admin can see all active users including other admins
         return db.query(user_model.User).filter(user_model.User.is_active == True).all()
     else:
-        # Non-admin users see hierarchy from their level and below
-        ceo_user = db.query(user_model.User).filter(
-            user_model.User.role == "CEO",
+        # Non-admin users see all active users except admin users
+        return db.query(user_model.User).filter(
+            user_model.User.role != "ADMIN",
             user_model.User.is_active == True
-        ).first()
-        
-        if ceo_user:
-            # If CEO exists, show CEO and all subordinates
-            ceo_subordinates = hierarchy_manager.get_all_subordinates(ceo_user.id)
-            subordinate_ids = [sub.id for sub in ceo_subordinates]
-            subordinate_ids.append(ceo_user.id)  # Include CEO
-            
-            return db.query(user_model.User).filter(
-                user_model.User.id.in_(subordinate_ids),
-                user_model.User.is_active == True
-            ).all()
-        else:
-            # If no CEO exists, show all active non-admin users
-            return db.query(user_model.User).filter(
-                user_model.User.role != "ADMIN",
-                user_model.User.is_active == True
-            ).all()
+        ).all()
 
 @router.get("/me")
 def get_current_user_info(current_user: user_model.User = Depends(get_current_user)):
@@ -247,37 +213,20 @@ def get_supervisors(
     db: Session = Depends(get_db),
     current_user: user_model.User = Depends(get_current_user)
 ):
-    """Get users for supervisor selection based on hierarchy"""
-    hierarchy_manager = HierarchyManager(db)
+    """Get users for supervisor selection - Same list for everyone (excluding admin users from non-admin users)"""
     
+    # Show all active users except admin users to non-admin users for supervisor selection
     if current_user.role == "ADMIN":
         # Admin can see all users as potential supervisors
         return db.query(user_model.User).filter(
             user_model.User.is_active == True
         ).all()
     else:
-        # Non-admin users see hierarchy from their level and below for supervisor selection
-        ceo_user = db.query(user_model.User).filter(
-            user_model.User.role == "CEO",
+        # Non-admin users see all active users except admin users for supervisor selection
+        return db.query(user_model.User).filter(
+            user_model.User.role != "ADMIN",
             user_model.User.is_active == True
-        ).first()
-        
-        if ceo_user:
-            # If CEO exists, show CEO and all subordinates
-            ceo_subordinates = hierarchy_manager.get_all_subordinates(ceo_user.id)
-            subordinate_ids = [sub.id for sub in ceo_subordinates]
-            subordinate_ids.append(ceo_user.id)  # Include CEO
-            
-            return db.query(user_model.User).filter(
-                user_model.User.id.in_(subordinate_ids),
-                user_model.User.is_active == True
-            ).all()
-        else:
-            # If no CEO exists, show all non-admin users for supervisor selection
-            return db.query(user_model.User).filter(
-                user_model.User.role != "ADMIN",
-                user_model.User.is_active == True
-            ).all()
+        ).all()
 
 @router.get("/departments/")
 def get_departments(current_user: user_model.User = Depends(get_current_user)):
