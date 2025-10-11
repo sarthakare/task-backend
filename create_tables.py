@@ -9,8 +9,8 @@ from app.models.reminder import Reminder
 from app.models.notification import Notification
 import os
 
-# Database URL - Use SQLite for local development if DATABASE_URL not set
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./task_manager.db")
+# Database URL - PostgreSQL only
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create engine
 engine = create_engine(DATABASE_URL)
@@ -56,36 +56,19 @@ def create_default_admin():
             
             # Create admin user if doesn't exist
             if admin_exists == 0:
-                if "postgresql" in DATABASE_URL.lower():
-                    conn.execute(text("""
-                        INSERT INTO users (name, email, mobile, hashed_password, department, role, supervisor_id, is_active, created_at)
-                        VALUES (:name, :email, :mobile, :password, :department, :role, :supervisor_id, :is_active, NOW())
-                    """), {
-                        "name": "System Administrator",
-                        "email": "admin@example.com",
-                        "mobile": "+1-555-0000",
-                        "password": admin_password,
-                        "department": "IT",
-                        "role": "ADMIN",
-                        "supervisor_id": None,
-                        "is_active": True
-                    })
-                else:
-                    # SQLite syntax
-                    conn.execute(text("""
-                        INSERT INTO users (name, email, mobile, hashed_password, department, role, supervisor_id, is_active, created_at)
-                        VALUES (:name, :email, :mobile, :password, :department, :role, :supervisor_id, :is_active, datetime('now'))
-                    """), {
-                        "name": "System Administrator",
-                        "email": "admin@example.com",
-                        "mobile": "+1-555-0000",
-                        "password": admin_password,
-                        "department": "IT",
-                        "role": "ADMIN",
-                        "supervisor_id": None,
-                        "is_active": True
-                    })
-                
+                conn.execute(text("""
+                    INSERT INTO users (name, email, mobile, hashed_password, department, role, supervisor_id, is_active, created_at)
+                    VALUES (:name, :email, :mobile, :password, :department, :role, :supervisor_id, :is_active, NOW())
+                """), {
+                    "name": "System Administrator",
+                    "email": "admin@example.com",
+                    "mobile": "+1-555-0000",
+                    "password": admin_password,
+                    "department": "All",
+                    "role": "ADMIN",
+                    "supervisor_id": None,
+                    "is_active": True
+                })
                 conn.commit()
                 print("[SUCCESS] Default admin user created!")
                 print("   Email: admin@example.com")
