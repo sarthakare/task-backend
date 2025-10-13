@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from app.database import Base
@@ -36,10 +36,10 @@ class Task(Base):
     status = Column(Enum(TaskStatus), default=TaskStatus.NEW, nullable=False)
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM, nullable=False)
     
-    # Dates
-    start_date = Column(DateTime, nullable=False)
-    due_date = Column(DateTime, nullable=False)
-    follow_up_date = Column(DateTime, nullable=False)
+    # Dates (date only, no time component)
+    start_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=False)
+    follow_up_date = Column(Date, nullable=False)
     
     # System dates
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 from app.database import get_db
 from app.models import Reminder, User, Task
@@ -21,13 +21,24 @@ def get_all_reminders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all reminders with optional filtering"""
+    """Get reminders - only shows reminders created by or assigned to current user"""
+    from sqlalchemy import or_
+    
     query = db.query(Reminder).options(
+        joinedload(Reminder.creator),
         joinedload(Reminder.user),
         joinedload(Reminder.task)
     )
     
-    # Apply filters
+    # Access control: only show reminders where user is creator OR assignee
+    query = query.filter(
+        or_(
+            Reminder.created_by == current_user.id,
+            Reminder.user_id == current_user.id
+        )
+    )
+    
+    # Apply additional filters
     if is_completed is not None:
         query = query.filter(Reminder.is_completed == is_completed)
     if priority:
@@ -49,6 +60,7 @@ def get_reminders_by_user(
 ):
     """Get reminders for a specific user"""
     query = db.query(Reminder).options(
+        joinedload(Reminder.creator),
         joinedload(Reminder.user),
         joinedload(Reminder.task)
     ).filter(Reminder.user_id == user_id)
@@ -67,6 +79,7 @@ def get_reminder(
 ):
     """Get a specific reminder by ID"""
     reminder = db.query(Reminder).options(
+        joinedload(Reminder.creator),
         joinedload(Reminder.user),
         joinedload(Reminder.task)
     ).filter(Reminder.id == reminder_id).first()
@@ -104,12 +117,13 @@ def create_reminder(
                 detail="Task not found"
             )
     
-    # Create the reminder
+    # Create the reminder (created_by is automatically set to current user)
     db_reminder = Reminder(
         title=reminder.title,
         description=reminder.description,
         due_date=reminder.due_date,
         priority=reminder.priority,
+        created_by=current_user.id,  # Auto-set creator
         user_id=reminder.user_id,
         task_id=reminder.task_id
     )
@@ -120,6 +134,7 @@ def create_reminder(
     
     # Load relationships for response
     db_reminder = db.query(Reminder).options(
+        joinedload(Reminder.creator),
         joinedload(Reminder.user),
         joinedload(Reminder.task)
     ).filter(Reminder.id == db_reminder.id).first()
@@ -181,6 +196,7 @@ def update_reminder(
     
     # Load relationships for response
     db_reminder = db.query(Reminder).options(
+        joinedload(Reminder.creator),
         joinedload(Reminder.user),
         joinedload(Reminder.task)
     ).filter(Reminder.id == db_reminder.id).first()
@@ -213,6 +229,7 @@ def mark_reminder_completed(
     
     # Load relationships for response
     db_reminder = db.query(Reminder).options(
+        joinedload(Reminder.creator),
         joinedload(Reminder.user),
         joinedload(Reminder.task)
     ).filter(Reminder.id == db_reminder.id).first()
@@ -245,8 +262,18 @@ def get_reminder_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get reminder statistics"""
+    """Get reminder statistics - only for reminders user created or is assigned to"""
+    from sqlalchemy import or_
+    
     query = db.query(Reminder)
+    
+    # Access control: only show stats for reminders where user is creator OR assignee
+    query = query.filter(
+        or_(
+            Reminder.created_by == current_user.id,
+            Reminder.user_id == current_user.id
+        )
+    )
     
     if user_id:
         query = query.filter(Reminder.user_id == user_id)
@@ -256,19 +283,16 @@ def get_reminder_stats(
     active_reminders = query.filter(Reminder.is_completed == False).count()
     completed_reminders = query.filter(Reminder.is_completed == True).count()
     
-    # Date-based counts
-    now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+    # Date-based counts (using date comparison, not datetime)
+    today = date.today()
     
     overdue_reminders = query.filter(
-        Reminder.due_date < now,
+        Reminder.due_date < today,
         Reminder.is_completed == False
     ).count()
     
     today_reminders = query.filter(
-        Reminder.due_date >= today_start,
-        Reminder.due_date <= today_end,
+        Reminder.due_date == today,
         Reminder.is_completed == False
     ).count()
     

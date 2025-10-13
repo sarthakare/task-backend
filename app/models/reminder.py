@@ -1,5 +1,5 @@
 # app/models/reminder.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from app.database import Base
@@ -11,11 +11,12 @@ class Reminder(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False, index=True)
     description = Column(Text, nullable=False)
-    due_date = Column(DateTime, nullable=False)
+    due_date = Column(Date, nullable=False)  # Date only, no time component
     priority = Column(String, nullable=False, default="MEDIUM")  # LOW, MEDIUM, HIGH, CRITICAL
     
     # Relationships
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)  # Who created the reminder
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Who the reminder is assigned to
     task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True)  # Optional task association
     
     # Status
@@ -27,5 +28,6 @@ class Reminder(Base):
     completed_at = Column(DateTime, nullable=True)
     
     # Relationships
-    user = relationship("User", back_populates="reminders")
+    creator = relationship("User", foreign_keys=[created_by], backref="created_reminders")
+    user = relationship("User", foreign_keys=[user_id], back_populates="reminders")
     task = relationship("Task", back_populates="reminders")

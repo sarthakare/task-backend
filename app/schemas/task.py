@@ -1,6 +1,6 @@
 # app/schemas/task.py
 from pydantic import BaseModel, validator
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List
 from enum import Enum
 
@@ -26,9 +26,9 @@ class TaskBase(BaseModel):
     assigned_to: int
     status: TaskStatus = TaskStatus.NEW
     priority: TaskPriority = TaskPriority.MEDIUM
-    start_date: datetime
-    due_date: datetime
-    follow_up_date: datetime
+    start_date: date  # Date only, no time component
+    due_date: date  # Date only, no time component
+    follow_up_date: date  # Date only, no time component
 
     @validator('due_date')
     def due_date_must_be_after_start_date(cls, v, values):
@@ -53,9 +53,9 @@ class TaskUpdate(BaseModel):
     assigned_to: Optional[int] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
-    start_date: Optional[datetime] = None
-    due_date: Optional[datetime] = None
-    follow_up_date: Optional[datetime] = None
+    start_date: Optional[date] = None  # Date only, no time component
+    due_date: Optional[date] = None  # Date only, no time component
+    follow_up_date: Optional[date] = None  # Date only, no time component
 
 # For returning task data
 class UserBasic(BaseModel):
@@ -131,9 +131,9 @@ class TaskOut(BaseModel):
     team_id: Optional[int] = None
     status: TaskStatus
     priority: TaskPriority
-    start_date: datetime
-    due_date: datetime
-    follow_up_date: datetime
+    start_date: date  # Date only, no time component
+    due_date: date  # Date only, no time component
+    follow_up_date: date  # Date only, no time component
     created_at: datetime
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

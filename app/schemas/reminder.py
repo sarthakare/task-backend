@@ -1,12 +1,12 @@
 # app/schemas/reminder.py
 from pydantic import BaseModel, validator
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 class ReminderBase(BaseModel):
     title: str
     description: str
-    due_date: datetime
+    due_date: date  # Date only, no time component
     priority: str = "MEDIUM"
     user_id: int
     task_id: Optional[int] = None
@@ -24,7 +24,7 @@ class ReminderCreate(ReminderBase):
 class ReminderUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    due_date: Optional[datetime] = None
+    due_date: Optional[date] = None  # Date only, no time component
     priority: Optional[str] = None
     user_id: Optional[int] = None
     task_id: Optional[int] = None
@@ -59,8 +59,9 @@ class ReminderOut(BaseModel):
     id: int
     title: str
     description: str
-    due_date: datetime
+    due_date: date  # Date only, no time component
     priority: str
+    created_by: int
     user_id: int
     task_id: Optional[int] = None
     is_completed: bool
@@ -69,6 +70,7 @@ class ReminderOut(BaseModel):
     completed_at: Optional[datetime] = None
     
     # Related objects
+    creator: UserBasic
     user: UserBasic
     task: Optional[TaskBasic] = None
 
