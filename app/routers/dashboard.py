@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 from app.database import get_db
 from app.models import User, Task, Project, Team
@@ -158,6 +158,25 @@ def get_dashboard_overview(
             "total_members": department_users
         }
     
+    # Calculate average task duration for completed tasks
+    avg_task_duration_days = 0.0
+    completed_tasks_with_duration = task_query.filter(
+        Task.status == TaskStatus.FINISHED,
+        Task.completed_at.isnot(None)
+    ).all()
+    
+    if completed_tasks_with_duration:
+        total_duration_days = 0
+        for task in completed_tasks_with_duration:
+            # Calculate duration from start_date to completed_at
+            if task.completed_at and task.start_date:
+                # Convert start_date (date) to datetime for comparison
+                start_datetime = datetime.combine(task.start_date, datetime.min.time())
+                duration = task.completed_at - start_datetime
+                total_duration_days += duration.days + (duration.seconds / 86400)  # Include fractional days
+        
+        avg_task_duration_days = round(total_duration_days / len(completed_tasks_with_duration), 1)
+    
     return {
         "user_role": user_role,
         "total_users": total_users,
@@ -168,6 +187,7 @@ def get_dashboard_overview(
         "completed_tasks": completed_tasks,
         "pending_tasks": pending_tasks,
         "overdue_tasks": overdue_tasks,
+        "avg_task_duration_days": avg_task_duration_days,
         "direct_subordinates_count": direct_subordinates_count,
         "team_info": team_info,
         "scope_description": scope_info,
